@@ -1,0 +1,111 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeguardian
+  namespace: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/version: v1.0.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubeguardian
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kubeguardian
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: kubeguardian
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: kubeguardian
+        image: kubeguardian/kubeguardian:v1.0.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --leader-elect
+        - --metrics-bind-address=0.0.0.0:8080
+        - --health-probe-bind-address=0.0.0.0:8081
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        env:
+        - name: CONFIG_FILE
+          value: "/etc/kubeguardian/config.yaml"
+        - name: SLACK_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: kubeguardian-secrets
+              key: slack-token
+              optional: true
+        volumeMounts:
+        - name: config
+          mountPath: /etc/kubeguardian
+          readOnly: true
+        - name: rules
+          mountPath: /etc/kubeguardian/rules
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: kubeguardian-config
+      - name: rules
+        configMap:
+          name: kubeguardian-rules
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/master
+                operator: Exists

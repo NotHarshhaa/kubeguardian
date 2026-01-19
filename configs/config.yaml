@@ -1,0 +1,53 @@
+# KubeGuardian Configuration Example
+# This file shows all available configuration options
+
+controller:
+  # Address to serve metrics
+  metricsAddr: ":8080"
+  # Address to serve health probes
+  probeAddr: ":8081"
+  # Enable leader election
+  leaderElection: true
+  # Sync period for controller
+  syncPeriod: 30s
+  # Maximum concurrent reconciles
+  maxConcurrentReconciles: 1
+
+detection:
+  # Path to rules file (can be absolute or relative)
+  rulesFile: "/etc/kubeguardian/rules/rules.yaml"
+  # How often to evaluate detection rules
+  evaluationInterval: 30s
+  # Number of crash loop restarts before triggering remediation
+  crashLoopThreshold: 3
+  # Number of failed deployment attempts before triggering remediation
+  failedDeploymentThreshold: 5
+  # CPU usage percentage threshold for auto-scaling
+  cpuThresholdPercent: 80.0
+
+remediation:
+  # Enable remediation actions
+  enabled: true
+  # Maximum number of retry attempts for failed remediation
+  maxRetries: 3
+  # Interval between retry attempts
+  retryInterval: 10s
+  # Run in dry-run mode (don't actually make changes)
+  dryRun: false
+  # Enable automatic deployment rollback
+  autoRollbackEnabled: true
+  # Enable automatic replica scaling
+  autoScaleEnabled: true
+
+notification:
+  slack:
+    # Enable Slack notifications
+    enabled: false
+    # Slack bot token (should be provided via secret in production)
+    token: ""
+    # Slack channel to send notifications to
+    channel: "#kubeguardian"
+    # Username for the bot
+    username: "KubeGuardian"
+    # Icon emoji for the bot
+    iconEmoji: ":robot_face:"

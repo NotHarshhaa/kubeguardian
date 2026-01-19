@@ -1,0 +1,374 @@
+# KubeGuardian Installation Manifest
+# This file contains all the necessary Kubernetes resources for installing KubeGuardian
+# 
+# Installation:
+# kubectl apply -f https://raw.githubusercontent.com/NotHarshhaa/kubeguardian/master/deployments/manifests/install.yaml
+#
+# After installation, configure Slack notifications by creating a secret:
+# kubectl create secret generic kubeguardian-secrets \
+#   --from-literal=slack-token=YOUR_SLACK_TOKEN \
+#   --namespace=kubeguardian
+
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeguardian
+  labels:
+    name: kubeguardian
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+
+---
+# ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubeguardian
+  namespace: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+
+---
+# ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+rules:
+# Core permissions for monitoring
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "events"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"] # For pod restart remediation
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+# Apps permissions for deployments
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale", "deployments/status", "replicasets", "replicasets/status"]
+  verbs: ["get", "list", "watch", "patch", "update"] # For deployment rollback and scaling
+# Metrics permissions (if metrics server is available)
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+# Custom metrics permissions (if custom metrics server is available)
+- apiGroups: ["custom.metrics.k8s.io"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+# Events permissions
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+# ConfigMaps and Secrets for configuration
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+# Leader election
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["kubeguardian-leader-election"]
+  verbs: ["get", "update", "patch"]
+# Coordinated leader election
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  resourceNames: ["kubeguardian-leader-election"]
+  verbs: ["get", "update", "patch"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubeguardian
+subjects:
+- kind: ServiceAccount
+  name: kubeguardian
+  namespace: kubeguardian
+
+---
+# ConfigMap for main configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubeguardian-config
+  namespace: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+data:
+  config.yaml: |
+    controller:
+      metricsAddr: ":8080"
+      probeAddr: ":8081"
+      leaderElection: true
+      syncPeriod: 30s
+      maxConcurrentReconciles: 1
+    
+    detection:
+      rulesFile: "/etc/kubeguardian/rules/rules.yaml"
+      evaluationInterval: 30s
+      crashLoopThreshold: 3
+      failedDeploymentThreshold: 5
+      cpuThresholdPercent: 80.0
+    
+    remediation:
+      enabled: true
+      maxRetries: 3
+      retryInterval: 10s
+      dryRun: false
+      autoRollbackEnabled: true
+      autoScaleEnabled: true
+    
+    notification:
+      slack:
+        enabled: false
+        token: ""
+        channel: "#kubeguardian"
+        username: "KubeGuardian"
+        iconEmoji: ":robot_face:"
+
+---
+# ConfigMap for detection rules
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubeguardian-rules
+  namespace: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+data:
+  rules.yaml: |
+    # KubeGuardian Detection Rules
+    # Each rule defines what to detect and what actions to take
+    
+    rules:
+      - name: "crash-loop-backoff"
+        description: "Detect pods in CrashLoopBackOff state"
+        enabled: true
+        conditions:
+          - resource: "Pod"
+            field: "status.phase"
+            operator: "equals"
+            value: "Running"
+          - resource: "Pod"
+            field: "status.containerStatuses[*].state.waiting.reason"
+            operator: "equals"
+            value: "CrashLoopBackOff"
+            duration: "5m"
+        actions:
+          - "restart-pod"
+        severity: "high"
+        labels:
+          team: "platform"
+          category: "pod-health"
+    
+      - name: "failed-deployment"
+        description: "Detect failed deployments"
+        enabled: true
+        conditions:
+          - resource: "Deployment"
+            field: "status.conditions[*].type"
+            operator: "equals"
+            value: "Progressing"
+          - resource: "Deployment"
+            field: "status.conditions[*].status"
+            operator: "equals"
+            value: "False"
+            duration: "10m"
+        actions:
+          - "rollback-deployment"
+        severity: "high"
+        labels:
+          team: "platform"
+          category: "deployment-health"
+    
+      - name: "high-cpu-usage"
+        description: "Detect high CPU usage"
+        enabled: true
+        conditions:
+          - resource: "Pod"
+            field: "metrics.cpu.usage"
+            operator: "greater_than"
+            value: 80.0
+            duration: "5m"
+        actions:
+          - "scale-replicas"
+        severity: "medium"
+        labels:
+          team: "platform"
+          category: "resource-usage"
+
+---
+# Service for metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeguardian-metrics
+  namespace: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+
+---
+# Service for health checks
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeguardian-health
+  namespace: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+spec:
+  type: ClusterIP
+  ports:
+  - name: health
+    port: 8081
+    targetPort: health
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeguardian
+  namespace: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/version: v1.0.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubeguardian
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kubeguardian
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: kubeguardian
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: kubeguardian
+        image: kubeguardian/kubeguardian:v1.0.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --leader-elect
+        - --metrics-bind-address=0.0.0.0:8080
+        - --health-probe-bind-address=0.0.0.0:8081
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        env:
+        - name: CONFIG_FILE
+          value: "/etc/kubeguardian/config.yaml"
+        - name: SLACK_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: kubeguardian-secrets
+              key: slack-token
+              optional: true
+        volumeMounts:
+        - name: config
+          mountPath: /etc/kubeguardian
+          readOnly: true
+        - name: rules
+          mountPath: /etc/kubeguardian/rules
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: kubeguardian-config
+      - name: rules
+        configMap:
+          name: kubeguardian-rules
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/master
+                operator: Exists

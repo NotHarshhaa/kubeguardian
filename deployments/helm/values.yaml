@@ -1,0 +1,192 @@
+# Default values for KubeGuardian Helm chart
+
+# Image configuration
+image:
+  repository: kubeguardian/kubeguardian
+  pullPolicy: IfNotPresent
+  tag: "v1.0.0"
+
+# Image pull secrets
+imagePullSecrets: []
+
+# Service account configuration
+serviceAccount:
+  create: true
+  annotations: {}
+  name: kubeguardian
+
+# Pod configuration
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+
+# Resources
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+# Node configuration
+nodeSelector:
+  kubernetes.io/os: linux
+
+tolerations:
+  - key: node-role.kubernetes.io/master
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: node-role.kubernetes.io/master
+              operator: Exists
+
+# Controller configuration
+controller:
+  metricsAddr: ":8080"
+  probeAddr: ":8081"
+  leaderElection: true
+  syncPeriod: 30s
+  maxConcurrentReconciles: 1
+
+# Detection configuration
+detection:
+  evaluationInterval: 30s
+  crashLoopThreshold: 3
+  failedDeploymentThreshold: 5
+  cpuThresholdPercent: 80.0
+
+# Remediation configuration
+remediation:
+  enabled: true
+  maxRetries: 3
+  retryInterval: 10s
+  dryRun: false
+  autoRollbackEnabled: true
+  autoScaleEnabled: true
+
+# Notification configuration
+notification:
+  slack:
+    enabled: false
+    token: ""
+    channel: "#kubeguardian"
+    username: "KubeGuardian"
+    iconEmoji: ":robot_face:"
+
+# Services configuration
+services:
+  metrics:
+    enabled: true
+    type: ClusterIP
+    port: 8080
+  health:
+    enabled: true
+    type: ClusterIP
+    port: 8081
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: kubeguardian.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# RBAC configuration
+rbac:
+  create: true
+
+# Configuration files
+config:
+  # Custom configmap data (will override defaults)
+  configData: {}
+  
+  # Custom rules data (will override defaults)
+  rulesData: {}
+
+# Secrets
+secrets:
+  # Create secrets for sensitive data
+  create: true
+  # Slack token secret
+  slackToken: ""
+  # Additional secrets
+  additionalSecrets: {}
+
+# Health probes
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: health
+  initialDelaySeconds: 15
+  periodSeconds: 20
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: health
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# Additional environment variables
+env: []
+
+# Additional volumes
+volumes: []
+
+# Additional volume mounts
+volumeMounts: []
+
+# Priority class
+priorityClassName: ""
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: ""
+
+# Additional labels
+commonLabels: {}
+
+# Additional annotations
+commonAnnotations: {}

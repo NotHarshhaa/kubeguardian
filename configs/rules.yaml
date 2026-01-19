@@ -1,0 +1,198 @@
+# KubeGuardian Detection Rules
+# This file defines the detection rules for KubeGuardian
+# Each rule specifies what to detect and what actions to take
+
+rules:
+  # CrashLoopBackOff Detection
+  - name: "crash-loop-backoff"
+    description: "Detect pods in CrashLoopBackOff state and restart them"
+    enabled: true
+    conditions:
+      - resource: "Pod"
+        field: "status.phase"
+        operator: "equals"
+        value: "Running"
+      - resource: "Pod"
+        field: "status.containerStatuses[*].state.waiting.reason"
+        operator: "equals"
+        value: "CrashLoopBackOff"
+        duration: "5m"
+    actions:
+      - "restart-pod"
+    severity: "high"
+    labels:
+      team: "platform"
+      category: "pod-health"
+      auto-remediation: "true"
+
+  # Failed Deployment Detection
+  - name: "failed-deployment"
+    description: "Detect failed deployments and automatically rollback"
+    enabled: true
+    conditions:
+      - resource: "Deployment"
+        field: "status.conditions[*].type"
+        operator: "equals"
+        value: "Progressing"
+      - resource: "Deployment"
+        field: "status.conditions[*].status"
+        operator: "equals"
+        value: "False"
+        duration: "10m"
+    actions:
+      - "rollback-deployment"
+    severity: "high"
+    labels:
+      team: "platform"
+      category: "deployment-health"
+      auto-remediation: "true"
+
+  # High CPU Usage Detection
+  - name: "high-cpu-usage"
+    description: "Detect high CPU usage and scale replicas"
+    enabled: true
+    conditions:
+      - resource: "Pod"
+        field: "metrics.cpu.usage"
+        operator: "greater_than"
+        value: 80.0
+        duration: "5m"
+    actions:
+      - "scale-replicas"
+    severity: "medium"
+    labels:
+      team: "platform"
+      category: "resource-usage"
+      auto-remediation: "true"
+
+  # Memory Pressure Detection
+  - name: "memory-pressure"
+    description: "Detect pods experiencing memory pressure"
+    enabled: true
+    conditions:
+      - resource: "Pod"
+        field: "status.conditions[*].type"
+        operator: "equals"
+        value: "MemoryPressure"
+        duration: "3m"
+    actions:
+      - "restart-pod"
+    severity: "medium"
+    labels:
+      team: "platform"
+      category: "resource-usage"
+      auto-remediation: "true"
+
+  # Image Pull Backoff Detection
+  - name: "image-pull-backoff"
+    description: "Detect pods with image pull backoff issues"
+    enabled: true
+    conditions:
+      - resource: "Pod"
+        field: "status.containerStatuses[*].state.waiting.reason"
+        operator: "equals"
+        value: "ImagePullBackOff"
+        duration: "10m"
+    actions:
+      - "restart-pod"
+    severity: "medium"
+    labels:
+      team: "platform"
+      category: "pod-health"
+      auto-remediation: "true"
+
+  # Node Not Ready Detection
+  - name: "node-not-ready"
+    description: "Detect nodes that are not ready"
+    enabled: true
+    conditions:
+      - resource: "Node"
+        field: "status.conditions[*].type"
+        operator: "equals"
+        value: "Ready"
+      - resource: "Node"
+        field: "status.conditions[*].status"
+        operator: "equals"
+        value: "False"
+        duration: "5m"
+    actions:
+      - "notify-only"
+    severity: "high"
+    labels:
+      team: "platform"
+      category: "node-health"
+      auto-remediation: "false"
+
+  # Pending Pod Detection
+  - name: "pending-pod"
+    description: "Detect pods stuck in pending state"
+    enabled: true
+    conditions:
+      - resource: "Pod"
+        field: "status.phase"
+        operator: "equals"
+        value: "Pending"
+        duration: "15m"
+    actions:
+      - "notify-only"
+    severity: "medium"
+    labels:
+      team: "platform"
+      category: "pod-health"
+      auto-remediation: "false"
+
+  # Container Restart Rate Detection
+  - name: "high-restart-rate"
+    description: "Detect containers with high restart rates"
+    enabled: true
+    conditions:
+      - resource: "Pod"
+        field: "status.containerStatuses[*].restartCount"
+        operator: "greater_than"
+        value: 5
+        duration: "30m"
+    actions:
+      - "restart-pod"
+    severity: "medium"
+    labels:
+      team: "platform"
+      category: "pod-health"
+      auto-remediation: "true"
+
+# Custom rule examples (disabled by default)
+# Uncomment and customize as needed
+
+# - name: "custom-application-error"
+#   description: "Detect application-specific errors from logs"
+#   enabled: false
+#   conditions:
+#     - resource: "Pod"
+#       field: "logs"
+#       operator: "contains"
+#       value: "ERROR: Database connection failed"
+#       duration: "2m"
+#   actions:
+#     - "restart-pod"
+#     - "scale-replicas"
+#   severity: "high"
+#   labels:
+#     team: "application"
+#     category: "application-health"
+#     auto-remediation: "true"
+
+# - name: "disk-pressure"
+#   description: "Detect pods experiencing disk pressure"
+#   enabled: false
+#   conditions:
+#     - resource: "Pod"
+#       field: "status.conditions[*].type"
+#       operator: "equals"
+#       value: "DiskPressure"
+#       duration: "5m"
+#   actions:
+#     - "notify-only"
+#   severity: "medium"
+#   labels:
+#     team: "platform"
+#     category: "resource-usage"
+#     auto-remediation: "false"

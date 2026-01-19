@@ -1,0 +1,25 @@
+# Basic KubeGuardian Configuration
+# This is a minimal configuration for getting started
+
+controller:
+  metricsAddr: ":8080"
+  probeAddr: ":8081"
+  leaderElection: true
+
+detection:
+  evaluationInterval: 30s
+  crashLoopThreshold: 3
+  failedDeploymentThreshold: 5
+  cpuThresholdPercent: 80.0
+
+remediation:
+  enabled: true
+  dryRun: false
+  autoRollbackEnabled: true
+  autoScaleEnabled: true
+
+notification:
+  slack:
+    enabled: false
+    channel: "#kubeguardian"
+    username: "KubeGuardian"

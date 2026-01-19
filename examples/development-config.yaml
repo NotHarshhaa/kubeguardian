@@ -1,0 +1,29 @@
+# Development KubeGuardian Configuration
+# This configuration is optimized for development environments
+
+controller:
+  metricsAddr: ":8080"
+  probeAddr: ":8081"
+  leaderElection: false
+  syncPeriod: 60s
+  maxConcurrentReconciles: 1
+
+detection:
+  evaluationInterval: 60s
+  crashLoopThreshold: 5
+  failedDeploymentThreshold: 10
+  cpuThresholdPercent: 90.0
+
+remediation:
+  enabled: true
+  maxRetries: 1
+  retryInterval: 5s
+  dryRun: true  # Enable dry-run for development
+  autoRollbackEnabled: true
+  autoScaleEnabled: false
+
+notification:
+  slack:
+    enabled: false
+    channel: "#dev-alerts"
+    username: "KubeGuardian-Dev"

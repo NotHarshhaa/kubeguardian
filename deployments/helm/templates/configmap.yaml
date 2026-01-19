@@ -1,0 +1,119 @@
+{{/*
+ConfigMap for main configuration
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubeguardian.configMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubeguardian.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    controller:
+      metricsAddr: {{ .Values.controller.metricsAddr | quote }}
+      probeAddr: {{ .Values.controller.probeAddr | quote }}
+      leaderElection: {{ .Values.controller.leaderElection }}
+      syncPeriod: {{ .Values.controller.syncPeriod }}
+      maxConcurrentReconciles: {{ .Values.controller.maxConcurrentReconciles }}
+    
+    detection:
+      rulesFile: "/etc/kubeguardian/rules/rules.yaml"
+      evaluationInterval: {{ .Values.detection.evaluationInterval }}
+      crashLoopThreshold: {{ .Values.detection.crashLoopThreshold }}
+      failedDeploymentThreshold: {{ .Values.detection.failedDeploymentThreshold }}
+      cpuThresholdPercent: {{ .Values.detection.cpuThresholdPercent }}
+    
+    remediation:
+      enabled: {{ .Values.remediation.enabled }}
+      maxRetries: {{ .Values.remediation.maxRetries }}
+      retryInterval: {{ .Values.remediation.retryInterval }}
+      dryRun: {{ .Values.remediation.dryRun }}
+      autoRollbackEnabled: {{ .Values.remediation.autoRollbackEnabled }}
+      autoScaleEnabled: {{ .Values.remediation.autoScaleEnabled }}
+    
+    notification:
+      slack:
+        enabled: {{ .Values.notification.slack.enabled }}
+        token: {{ .Values.notification.slack.token | quote }}
+        channel: {{ .Values.notification.slack.channel | quote }}
+        username: {{ .Values.notification.slack.username | quote }}
+        iconEmoji: {{ .Values.notification.slack.iconEmoji | quote }}
+    {{- with .Values.config.configData }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+
+{{/*
+ConfigMap for detection rules
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubeguardian.rulesConfigMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubeguardian.labels" . | nindent 4 }}
+data:
+  rules.yaml: |
+    # KubeGuardian Detection Rules
+    # Each rule defines what to detect and what actions to take
+    
+    rules:
+      - name: "crash-loop-backoff"
+        description: "Detect pods in CrashLoopBackOff state"
+        enabled: true
+        conditions:
+          - resource: "Pod"
+            field: "status.phase"
+            operator: "equals"
+            value: "Running"
+          - resource: "Pod"
+            field: "status.containerStatuses[*].state.waiting.reason"
+            operator: "equals"
+            value: "CrashLoopBackOff"
+            duration: "5m"
+        actions:
+          - "restart-pod"
+        severity: "high"
+        labels:
+          team: "platform"
+          category: "pod-health"
+    
+      - name: "failed-deployment"
+        description: "Detect failed deployments"
+        enabled: true
+        conditions:
+          - resource: "Deployment"
+            field: "status.conditions[*].type"
+            operator: "equals"
+            value: "Progressing"
+          - resource: "Deployment"
+            field: "status.conditions[*].status"
+            operator: "equals"
+            value: "False"
+            duration: "10m"
+        actions:
+          - "rollback-deployment"
+        severity: "high"
+        labels:
+          team: "platform"
+          category: "deployment-health"
+    
+      - name: "high-cpu-usage"
+        description: "Detect high CPU usage"
+        enabled: true
+        conditions:
+          - resource: "Pod"
+            field: "metrics.cpu.usage"
+            operator: "greater_than"
+            value: {{ .Values.detection.cpuThresholdPercent }}
+            duration: "5m"
+        actions:
+          - "scale-replicas"
+        severity: "medium"
+        labels:
+          team: "platform"
+          category: "resource-usage"
+    {{- with .Values.config.rulesData }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}

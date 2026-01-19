@@ -1,0 +1,119 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeguardian
+  labels:
+    name: kubeguardian
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubeguardian-config
+  namespace: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+data:
+  config.yaml: |
+    controller:
+      metricsAddr: ":8080"
+      probeAddr: ":8081"
+      leaderElection: true
+      syncPeriod: 30s
+      maxConcurrentReconciles: 1
+    
+    detection:
+      rulesFile: "/etc/kubeguardian/rules/rules.yaml"
+      evaluationInterval: 30s
+      crashLoopThreshold: 3
+      failedDeploymentThreshold: 5
+      cpuThresholdPercent: 80.0
+    
+    remediation:
+      enabled: true
+      maxRetries: 3
+      retryInterval: 10s
+      dryRun: false
+      autoRollbackEnabled: true
+      autoScaleEnabled: true
+    
+    notification:
+      slack:
+        enabled: false
+        token: ""
+        channel: "#kubeguardian"
+        username: "KubeGuardian"
+        iconEmoji: ":robot_face:"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubeguardian-rules
+  namespace: kubeguardian
+  labels:
+    app.kubernetes.io/name: kubeguardian
+    app.kubernetes.io/component: controller
+data:
+  rules.yaml: |
+    # KubeGuardian Detection Rules
+    # Each rule defines what to detect and what actions to take
+    
+    rules:
+      - name: "crash-loop-backoff"
+        description: "Detect pods in CrashLoopBackOff state"
+        enabled: true
+        conditions:
+          - resource: "Pod"
+            field: "status.phase"
+            operator: "equals"
+            value: "Running"
+          - resource: "Pod"
+            field: "status.containerStatuses[*].state.waiting.reason"
+            operator: "equals"
+            value: "CrashLoopBackOff"
+            duration: "5m"
+        actions:
+          - "restart-pod"
+        severity: "high"
+        labels:
+          team: "platform"
+          category: "pod-health"
+    
+      - name: "failed-deployment"
+        description: "Detect failed deployments"
+        enabled: true
+        conditions:
+          - resource: "Deployment"
+            field: "status.conditions[*].type"
+            operator: "equals"
+            value: "Progressing"
+          - resource: "Deployment"
+            field: "status.conditions[*].status"
+            operator: "equals"
+            value: "False"
+            duration: "10m"
+        actions:
+          - "rollback-deployment"
+        severity: "high"
+        labels:
+          team: "platform"
+          category: "deployment-health"
+    
+      - name: "high-cpu-usage"
+        description: "Detect high CPU usage"
+        enabled: true
+        conditions:
+          - resource: "Pod"
+            field: "metrics.cpu.usage"
+            operator: "greater_than"
+            value: 80.0
+            duration: "5m"
+        actions:
+          - "scale-replicas"
+        severity: "medium"
+        labels:
+          team: "platform"
+          category: "resource-usage"

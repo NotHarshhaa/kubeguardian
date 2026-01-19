@@ -1,0 +1,30 @@
+# Production KubeGuardian Configuration
+# This configuration is optimized for production environments
+
+controller:
+  metricsAddr: ":8080"
+  probeAddr: ":8081"
+  leaderElection: true
+  syncPeriod: 15s
+  maxConcurrentReconciles: 2
+
+detection:
+  evaluationInterval: 15s
+  crashLoopThreshold: 2
+  failedDeploymentThreshold: 3
+  cpuThresholdPercent: 75.0
+
+remediation:
+  enabled: true
+  maxRetries: 5
+  retryInterval: 30s
+  dryRun: false
+  autoRollbackEnabled: true
+  autoScaleEnabled: true
+
+notification:
+  slack:
+    enabled: true
+    channel: "#alerts"
+    username: "KubeGuardian"
+    iconEmoji: ":robot_face:"

@@ -1,0 +1,90 @@
+{{/*
+ServiceAccount
+*/}}
+{{- if .Values.serviceAccount.create -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "kubeguardian.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubeguardian.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+automountServiceAccountToken: true
+{{- end }}
+
+{{/*
+ClusterRole
+*/}}
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubeguardian.fullname" . }}
+  labels:
+    {{- include "kubeguardian.labels" . | nindent 4 }}
+rules:
+# Core permissions for monitoring
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "events"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"] # For pod restart remediation
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+# Apps permissions for deployments
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale", "deployments/status", "replicasets", "replicasets/status"]
+  verbs: ["get", "list", "watch", "patch", "update"] # For deployment rollback and scaling
+# Metrics permissions (if metrics server is available)
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+# Custom metrics permissions (if custom metrics server is available)
+- apiGroups: ["custom.metrics.k8s.io"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+# Events permissions
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+# ConfigMaps and Secrets for configuration
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+# Leader election
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["kubeguardian-leader-election"]
+  verbs: ["get", "update", "patch"]
+# Coordinated leader election
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  resourceNames: ["kubeguardian-leader-election"]
+  verbs: ["get", "update", "patch"]
+{{- end }}
+
+{{/*
+ClusterRoleBinding
+*/}}
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeguardian.fullname" . }}
+  labels:
+    {{- include "kubeguardian.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubeguardian.fullname" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "kubeguardian.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}

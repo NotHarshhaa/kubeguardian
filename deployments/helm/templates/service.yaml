@@ -1,0 +1,47 @@
+{{/*
+Metrics Service
+*/}}
+{{- if .Values.services.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kubeguardian.metricsServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubeguardian.labels" . | nindent 4 }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "{{ .Values.services.metrics.port }}"
+    prometheus.io/path: "/metrics"
+spec:
+  type: {{ .Values.services.metrics.type }}
+  ports:
+  - name: metrics
+    port: {{ .Values.services.metrics.port }}
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    {{- include "kubeguardian.selectorLabels" . | nindent 4 }}
+{{- end }}
+
+{{/*
+Health Service
+*/}}
+{{- if .Values.services.health.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kubeguardian.healthServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubeguardian.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.services.health.type }}
+  ports:
+  - name: health
+    port: {{ .Values.services.health.port }}
+    targetPort: health
+    protocol: TCP
+  selector:
+    {{- include "kubeguardian.selectorLabels" . | nindent 4 }}
+{{- end }}

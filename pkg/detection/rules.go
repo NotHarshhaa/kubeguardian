@@ -1,0 +1,301 @@
+package detection
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+// Rule represents a detection rule
+type Rule struct {
+	Name        string            `yaml:"name"`
+	Description string            `yaml:"description"`
+	Enabled     bool              `yaml:"enabled"`
+	Conditions  []RuleCondition   `yaml:"conditions"`
+	Actions     []string          `yaml:"actions"`
+	Severity    string            `yaml:"severity"`
+	Labels      map[string]string `yaml:"labels"`
+}
+
+// RuleCondition represents a condition in a rule
+type RuleCondition struct {
+	Resource  string                 `yaml:"resource"`
+	Field     string                 `yaml:"field"`
+	Operator  string                 `yaml:"operator"`
+	Value     interface{}            `yaml:"value"`
+	Duration  *metav1.Duration       `yaml:"duration"`
+	MatchExpr map[string]interface{} `yaml:"matchExpr"`
+}
+
+// Issue represents a detected issue
+type Issue struct {
+	RuleName    string            `yaml:"ruleName"`
+	Description string            `yaml:"description"`
+	Severity    string            `yaml:"severity"`
+	Resource    runtime.Object    `yaml:"resource"`
+	Namespace   string            `yaml:"namespace"`
+	Name        string            `yaml:"name"`
+	Kind        string            `yaml:"kind"`
+	Actions     []string          `yaml:"actions"`
+	Labels      map[string]string `yaml:"labels"`
+	DetectedAt  time.Time         `yaml:"detectedAt"`
+}
+
+// Detector represents the detection engine
+type Detector struct {
+	client     kubernetes.Interface
+	rules      []Rule
+	config     DetectionConfig
+}
+
+// DetectionConfig contains detection configuration
+type DetectionConfig struct {
+	RulesFile                string        `yaml:"rulesFile"`
+	EvaluationInterval       time.Duration `yaml:"evaluationInterval"`
+	CrashLoopThreshold       int           `yaml:"crashLoopThreshold"`
+	FailedDeploymentThreshold int          `yaml:"failedDeploymentThreshold"`
+	CPUThresholdPercent      float64       `yaml:"cpuThresholdPercent"`
+}
+
+// NewDetector creates a new detector instance
+func NewDetector(client kubernetes.Interface, config DetectionConfig) *Detector {
+	return &Detector{
+		client: client,
+		config: config,
+		rules:  []Rule{},
+	}
+}
+
+// LoadRules loads detection rules from configuration
+func (d *Detector) LoadRules() error {
+	// For now, use built-in rules. In a real implementation, 
+	// this would load from a YAML file
+	d.rules = []Rule{
+		{
+			Name:        "crash-loop-backoff",
+			Description: "Detect pods in CrashLoopBackOff state",
+			Enabled:     true,
+			Conditions: []RuleCondition{
+				{
+					Resource: "Pod",
+					Field:    "status.phase",
+					Operator: "equals",
+					Value:    "Running",
+				},
+				{
+					Resource: "Pod",
+					Field:    "status.containerStatuses[*].state.waiting.reason",
+					Operator: "equals",
+					Value:    "CrashLoopBackOff",
+					Duration: &metav1.Duration{Duration: 5 * time.Minute},
+				},
+			},
+			Actions:  []string{"restart-pod"},
+			Severity: "high",
+		},
+		{
+			Name:        "failed-deployment",
+			Description: "Detect failed deployments",
+			Enabled:     true,
+			Conditions: []RuleCondition{
+				{
+					Resource: "Deployment",
+					Field:    "status.conditions[*].type",
+					Operator: "equals",
+					Value:    "Progressing",
+				},
+				{
+					Resource: "Deployment",
+					Field:    "status.conditions[*].status",
+					Operator: "equals",
+					Value:    "False",
+					Duration: &metav1.Duration{Duration: 10 * time.Minute},
+				},
+			},
+			Actions:  []string{"rollback-deployment"},
+			Severity: "high",
+		},
+		{
+			Name:        "high-cpu-usage",
+			Description: "Detect high CPU usage",
+			Enabled:     true,
+			Conditions: []RuleCondition{
+				{
+					Resource: "Pod",
+					Field:    "metrics.cpu.usage",
+					Operator: "greater_than",
+					Value:    d.config.CPUThresholdPercent,
+					Duration: &metav1.Duration{Duration: 5 * time.Minute},
+				},
+			},
+			Actions:  []string{"scale-replicas"},
+			Severity: "medium",
+		},
+	}
+	return nil
+}
+
+// DetectIssues runs detection rules and returns detected issues
+func (d *Detector) DetectIssues(ctx context.Context) ([]Issue, error) {
+	logger := log.FromContext(ctx)
+	var issues []Issue
+
+	for _, rule := range d.rules {
+		if !rule.Enabled {
+			continue
+		}
+
+		logger.Info("Running detection rule", "rule", rule.Name)
+		ruleIssues, err := d.evaluateRule(ctx, rule)
+		if err != nil {
+			logger.Error(err, "Failed to evaluate rule", "rule", rule.Name)
+			continue
+		}
+
+		issues = append(issues, ruleIssues...)
+	}
+
+	return issues, nil
+}
+
+// evaluateRule evaluates a single rule
+func (d *Detector) evaluateRule(ctx context.Context, rule Rule) ([]Issue, error) {
+	var issues []Issue
+
+	switch rule.Name {
+	case "crash-loop-backoff":
+		return d.detectCrashLoopBackOff(ctx, rule)
+	case "failed-deployment":
+		return d.detectFailedDeployment(ctx, rule)
+	case "high-cpu-usage":
+		return d.detectHighCPUUsage(ctx, rule)
+	default:
+		return issues, fmt.Errorf("unknown rule: %s", rule.Name)
+	}
+}
+
+// detectCrashLoopBackOff detects pods in CrashLoopBackOff state
+func (d *Detector) detectCrashLoopBackOff(ctx context.Context, rule Rule) ([]Issue, error) {
+	var issues []Issue
+
+	pods, err := d.client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return issues, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	for _, pod := range pods.Items {
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			if containerStatus.State.Waiting != nil &&
+				containerStatus.State.Waiting.Reason == "CrashLoopBackOff" {
+				
+				// Check if the condition has been met for the required duration
+				if d.meetsDurationCondition(containerStatus.LastTerminationState.Terminated, rule.Conditions[1].Duration) {
+					issue := Issue{
+						RuleName:    rule.Name,
+						Description: rule.Description,
+						Severity:    rule.Severity,
+						Resource:    pod.DeepCopyObject(),
+						Namespace:   pod.Namespace,
+						Name:        pod.Name,
+						Kind:        "Pod",
+						Actions:     rule.Actions,
+						Labels:      rule.Labels,
+						DetectedAt:  time.Now(),
+					}
+					issues = append(issues, issue)
+				}
+			}
+		}
+	}
+
+	return issues, nil
+}
+
+// detectFailedDeployment detects failed deployments
+func (d *Detector) detectFailedDeployment(ctx context.Context, rule Rule) ([]Issue, error) {
+	var issues []Issue
+
+	deployments, err := d.client.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return issues, fmt.Errorf("failed to list deployments: %w", err)
+	}
+
+	for _, deployment := range deployments.Items {
+		for _, condition := range deployment.Status.Conditions {
+			if condition.Type == appsv1.DeploymentProgressing &&
+				condition.Status == corev1.ConditionFalse &&
+				condition.Reason == "ProgressDeadlineExceeded" {
+				
+				issue := Issue{
+					RuleName:    rule.Name,
+					Description: rule.Description,
+					Severity:    rule.Severity,
+					Resource:    deployment.DeepCopyObject(),
+					Namespace:   deployment.Namespace,
+					Name:        deployment.Name,
+					Kind:        "Deployment",
+					Actions:     rule.Actions,
+					Labels:      rule.Labels,
+					DetectedAt:  time.Now(),
+				}
+				issues = append(issues, issue)
+			}
+		}
+	}
+
+	return issues, nil
+}
+
+// detectHighCPUUsage detects high CPU usage (simplified implementation)
+func (d *Detector) detectHighCPUUsage(ctx context.Context, rule Rule) ([]Issue, error) {
+	var issues []Issue
+
+	// This is a simplified implementation. In a real scenario,
+	// you would use metrics server or Prometheus to get actual CPU metrics
+	
+	pods, err := d.client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return issues, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	for _, pod := range pods.Items {
+		// Simulate high CPU detection based on restart count
+		// In reality, you'd query metrics server or Prometheus
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			if containerStatus.RestartCount > 5 {
+				issue := Issue{
+					RuleName:    rule.Name,
+					Description: rule.Description,
+					Severity:    rule.Severity,
+					Resource:    pod.DeepCopyObject(),
+					Namespace:   pod.Namespace,
+					Name:        pod.Name,
+					Kind:        "Pod",
+					Actions:     rule.Actions,
+					Labels:      rule.Labels,
+					DetectedAt:  time.Now(),
+				}
+				issues = append(issues, issue)
+			}
+		}
+	}
+
+	return issues, nil
+}
+
+// meetsDurationCondition checks if a condition has been met for the required duration
+func (d *Detector) meetsDurationCondition(terminated *corev1.ContainerStateTerminated, duration *metav1.Duration) bool {
+	if terminated == nil || duration == nil {
+		return false
+	}
+	
+	return time.Since(terminated.FinishedAt.Time) >= duration.Duration
+}
