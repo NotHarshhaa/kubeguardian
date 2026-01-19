@@ -1,12 +1,22 @@
 name: Release Helm Chart
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'deployments/helm/**'
   workflow_dispatch:
+    inputs:
+      chart_version:
+        description: 'Chart version (optional, defaults to 1.0.0)'
+        required: false
+        type: string
+        default: '1.0.0'
+      release_notes:
+        description: 'Release notes'
+        required: false
+        type: string
+      deploy_to_pages:
+        description: 'Deploy to GitHub Pages'
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -71,7 +81,7 @@ jobs:
   deploy:
     needs: release
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master'
+    if: ${{ inputs.deploy_to_pages == true }}
     permissions:
       pages: write
       id-token: write

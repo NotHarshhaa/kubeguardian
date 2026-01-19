@@ -6,20 +6,15 @@ WORKDIR /app
 # Install dependencies
 RUN apk add --no-cache git ca-certificates tzdata
 
-# Copy go mod files
+# Copy go mod files first (for better caching)
 COPY go.mod ./
 
-# Initialize go mod and download dependencies
+# Download dependencies (cached if go.mod doesn't change)
 RUN go mod download && go mod tidy
 
-# Copy source code
-COPY . .
-
-# Fix dependencies again after source copy
-RUN go mod tidy
-
-# Verify build before final build
-RUN go build -o /tmp/test-build ./cmd/kubeguardian && rm /tmp/test-build
+# Copy only necessary source files
+COPY cmd/ ./cmd/
+COPY pkg/ ./pkg/
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o kubeguardian ./cmd/kubeguardian

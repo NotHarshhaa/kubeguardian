@@ -56,7 +56,7 @@ coverage.txt
 coverage.html
 
 # Docker
-.dockerignore
+!.dockerignore
 
 # Helm
 charts/
