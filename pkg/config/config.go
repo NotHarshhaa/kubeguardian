@@ -71,6 +71,7 @@ type NamespaceRemediationConfig struct {
 	AutoScaleEnabled    bool          `yaml:"autoScaleEnabled"`
 	MaxRetries          int           `yaml:"maxRetries"`
 	RetryInterval       time.Duration `yaml:"retryInterval"`
+	CooldownSeconds     int           `yaml:"cooldownSeconds"`
 }
 
 // RemediationConfig contains remediation engine settings
@@ -81,6 +82,7 @@ type RemediationConfig struct {
 	DryRun              bool          `yaml:"dryRun"`
 	AutoRollbackEnabled bool          `yaml:"autoRollbackEnabled"`
 	AutoScaleEnabled    bool          `yaml:"autoScaleEnabled"`
+	CooldownSeconds     int           `yaml:"cooldownSeconds"`
 }
 
 // NotificationConfig contains notification settings
@@ -136,6 +138,7 @@ func DefaultConfig() *Config {
 						AutoScaleEnabled:    true,
 						MaxRetries:          3,
 						RetryInterval:       10 * time.Second,
+						CooldownSeconds:     300, // 5 minutes default cooldown
 					},
 				},
 			},
@@ -147,6 +150,7 @@ func DefaultConfig() *Config {
 			DryRun:              false,
 			AutoRollbackEnabled: true,
 			AutoScaleEnabled:    true,
+			CooldownSeconds:     300, // 5 minutes default cooldown
 		},
 		Notification: NotificationConfig{
 			Slack: SlackConfig{

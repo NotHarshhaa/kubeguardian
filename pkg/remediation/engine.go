@@ -15,8 +15,9 @@ import (
 
 // Engine represents the remediation engine
 type Engine struct {
-	client kubernetes.Interface
-	config RemediationConfig
+	client    kubernetes.Interface
+	config    RemediationConfig
+	cooldowns map[string]CooldownEntry // Key: "namespace:resource:action"
 }
 
 // RemediationConfig contains remediation configuration
@@ -27,6 +28,7 @@ type RemediationConfig struct {
 	DryRun              bool                                  `yaml:"dryRun"`
 	AutoRollbackEnabled bool                                  `yaml:"autoRollbackEnabled"`
 	AutoScaleEnabled    bool                                  `yaml:"autoScaleEnabled"`
+	CooldownSeconds     int                                   `yaml:"cooldownSeconds"`
 	Namespaces          map[string]NamespaceRemediationConfig `yaml:"namespaces"`
 }
 
@@ -37,6 +39,7 @@ type NamespaceRemediationConfig struct {
 	AutoScaleEnabled    bool          `yaml:"autoScaleEnabled"`
 	MaxRetries          int           `yaml:"maxRetries"`
 	RetryInterval       time.Duration `yaml:"retryInterval"`
+	CooldownSeconds     int           `yaml:"cooldownSeconds"`
 }
 
 // Action represents a remediation action
@@ -58,11 +61,19 @@ type Result struct {
 	Duration   time.Duration `yaml:"duration"`
 }
 
+// CooldownEntry tracks the last remediation time for a resource-action pair
+type CooldownEntry struct {
+	ResourceKey string    `json:"resourceKey"`
+	Action      string    `json:"action"`
+	LastAction  time.Time `json:"lastAction"`
+}
+
 // NewEngine creates a new remediation engine
 func NewEngine(client kubernetes.Interface, config RemediationConfig) *Engine {
 	return &Engine{
-		client: client,
-		config: config,
+		client:    client,
+		config:    config,
+		cooldowns: make(map[string]CooldownEntry),
 	}
 }
 
@@ -79,11 +90,14 @@ func (e *Engine) GetNamespaceConfig(namespace string) NamespaceRemediationConfig
 		AutoScaleEnabled:    e.config.AutoScaleEnabled,
 		MaxRetries:          e.config.MaxRetries,
 		RetryInterval:       e.config.RetryInterval,
+		CooldownSeconds:     e.config.CooldownSeconds,
 	}
 }
 
 // ExecuteAction executes a remediation action
 func (e *Engine) ExecuteAction(ctx context.Context, action string, resource interface{}, namespace string) (*Result, error) {
+	logger := log.FromContext(ctx)
+
 	// Get namespace-specific configuration
 	nsConfig := e.GetNamespaceConfig(namespace)
 
@@ -96,15 +110,48 @@ func (e *Engine) ExecuteAction(ctx context.Context, action string, resource inte
 		}, nil
 	}
 
+	// Get resource name for cooldown tracking
+	resourceName := e.getResourceName(resource)
+	cooldownKey := fmt.Sprintf("%s:%s:%s", namespace, resourceName, action)
+
+	// Check if action is in cooldown period
+	if e.isInCooldown(cooldownKey, nsConfig.CooldownSeconds) {
+		logger.Info("Action skipped due to cooldown",
+			"action", action,
+			"resource", resourceName,
+			"namespace", namespace,
+			"cooldownSeconds", nsConfig.CooldownSeconds)
+		return &Result{
+			Action:     action,
+			Success:    false,
+			Message:    fmt.Sprintf("Action skipped due to cooldown period (%d seconds)", nsConfig.CooldownSeconds),
+			Resource:   resourceName,
+			Namespace:  namespace,
+			ExecutedAt: time.Now(),
+		}, nil
+	}
+
 	startTime := time.Now()
 
 	switch action {
 	case "restart-pod":
-		return e.restartPod(ctx, resource, namespace)
+		result, err := e.restartPod(ctx, resource, namespace)
+		if err == nil && result.Success {
+			e.recordCooldown(cooldownKey)
+		}
+		return result, err
 	case "rollback-deployment":
-		return e.rollbackDeployment(ctx, resource, namespace)
+		result, err := e.rollbackDeployment(ctx, resource, namespace)
+		if err == nil && result.Success {
+			e.recordCooldown(cooldownKey)
+		}
+		return result, err
 	case "scale-replicas":
-		return e.scaleReplicas(ctx, resource, namespace)
+		result, err := e.scaleReplicas(ctx, resource, namespace)
+		if err == nil && result.Success {
+			e.recordCooldown(cooldownKey)
+		}
+		return result, err
 	default:
 		return &Result{
 			Action:     action,
@@ -113,6 +160,53 @@ func (e *Engine) ExecuteAction(ctx context.Context, action string, resource inte
 			ExecutedAt: time.Now(),
 			Duration:   time.Since(startTime),
 		}, fmt.Errorf("unknown action: %s", action)
+	}
+}
+
+// getResourceName extracts the resource name from different resource types
+func (e *Engine) getResourceName(resource interface{}) string {
+	switch r := resource.(type) {
+	case *corev1.Pod:
+		return r.Name
+	case *appsv1.Deployment:
+		return r.Name
+	default:
+		return "unknown"
+	}
+}
+
+// isInCooldown checks if an action is currently in cooldown period
+func (e *Engine) isInCooldown(cooldownKey string, cooldownSeconds int) bool {
+	if cooldownSeconds <= 0 {
+		return false // Cooldown disabled
+	}
+
+	entry, exists := e.cooldowns[cooldownKey]
+	if !exists {
+		return false // No previous action recorded
+	}
+
+	// Check if cooldown period has passed
+	cooldownDuration := time.Duration(cooldownSeconds) * time.Second
+	return time.Since(entry.LastAction) < cooldownDuration
+}
+
+// recordCooldown records the timestamp of a successful remediation action
+func (e *Engine) recordCooldown(cooldownKey string) {
+	e.cooldowns[cooldownKey] = CooldownEntry{
+		ResourceKey: cooldownKey,
+		LastAction:  time.Now(),
+	}
+}
+
+// CleanupCooldowns removes expired cooldown entries to prevent memory leaks
+func (e *Engine) CleanupCooldowns() {
+	now := time.Now()
+	for key, entry := range e.cooldowns {
+		// Remove entries older than 1 hour to prevent memory buildup
+		if now.Sub(entry.LastAction) > time.Hour {
+			delete(e.cooldowns, key)
+		}
 	}
 }
 

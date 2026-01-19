@@ -10,12 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - 🧪 **Dry-Run Mode** - Simulate remediation actions without making changes
 - 🏷️ **Namespace-Scoped Rules** - Apply different detection and remediation policies per namespace
+- ⏱️ **Remediation Cooldown Window** - Prevent repeated fixes and avoid fix loops
 - Command-line flags for dry-run mode (`--dry-run` and `-d`)
 - Namespace-specific configuration fallback to global defaults
 - Per-namespace crash loop restart limits
 - Per-namespace deployment failure thresholds
 - Per-namespace CPU monitoring thresholds
 - Per-namespace remediation policies (enable/disable, rollback, scaling)
+- Cooldown tracking with configurable cooldown periods
 - Enhanced logging with namespace-specific context
 
 ### Features
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Leader election support
 - Dry-run mode for testing
 - Namespace-specific rule configuration
+- Remediation cooldown window to prevent fix loops
 
 ### Security
 - Least-privilege RBAC configuration

@@ -104,6 +104,7 @@ image: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
 - 📈 **CPU-based auto-scaling**
 - 🧪 **Dry-run mode** - Test remediation actions safely
 - 🏷️ **Namespace-scoped rules** - Different policies per namespace
+- ⏱️ **Remediation cooldown window** - Prevent repeated fixes and fix loops
 - ⚙️ **YAML-based rule configuration**
 - 🔔 **Slack notifications**
 - 🔐 **Least-privilege RBAC**
@@ -169,6 +170,7 @@ remediation:
   dryRun: false
   autoRollbackEnabled: true
   autoScaleEnabled: true
+  cooldownSeconds: 300  # 5 minutes cooldown between actions
 
 # Namespace-specific rules (optional)
 namespaces:
@@ -181,6 +183,7 @@ namespaces:
       enabled: true
       autoRollbackEnabled: true
       maxRetries: 2
+      cooldownSeconds: 600  # 10 minutes for production
   
   dev:
     crashloop:
@@ -191,6 +194,7 @@ namespaces:
       enabled: true
       autoRollbackEnabled: false  # Don't auto-rollback in dev
       maxRetries: 5
+      cooldownSeconds: 120  # 2 minutes for development
 
 notification:
   slack:
@@ -309,6 +313,53 @@ detection:
 3. **Resource Optimization**: Different monitoring intensities per namespace
 4. **Operational Flexibility**: Enable/disable features per environment
 5. **Gradual Rollout**: Test new rules in specific namespaces first
+
+## ⏱️ Remediation Cooldown Window
+
+Prevent repeated fixes and avoid fix loops with configurable cooldown periods:
+
+### Configuration
+```yaml
+remediation:
+  enabled: true
+  cooldownSeconds: 300  # 5 minutes cooldown between actions
+
+# Namespace-specific cooldown
+namespaces:
+  prod:
+    remediation:
+      cooldownSeconds: 600  # 10 minutes for production
+  dev:
+    remediation:
+      cooldownSeconds: 120  # 2 minutes for development
+```
+
+### What Cooldown Does
+- ✅ **Prevents repeated fixes** - Stops same action on same resource repeatedly
+- ✅ **Avoids fix loops** - Prevents endless cycles of restart attempts
+- ✅ **Protects stability** - Gives resources time to stabilize
+- ✅ **Reduces noise** - Limits unnecessary remediation attempts
+
+### How It Works
+1. **Cooldown Key**: `{namespace}:{resourceName}:{action}`
+2. **Pre-Action Check**: Verifies if action is in cooldown period
+3. **Skip Logic**: Logs and skips if cooldown is active
+4. **Post-Action Recording**: Tracks successful actions for future checks
+
+### Cooldown Examples
+```yaml
+# Conservative (Production)
+cooldownSeconds: 600  # 10 minutes
+
+# Moderate (Staging)
+cooldownSeconds: 300  # 5 minutes
+
+# Aggressive (Development)
+cooldownSeconds: 60   # 1 minute
+
+# Disabled
+cooldownSeconds: 0    # No cooldown
+```
 
 ## 🔍 How It Works
 
@@ -440,6 +491,9 @@ go run cmd/kubeguardian/main.go --dry-run --config configs/config.yaml
 
 # Run with namespace-scoped configuration
 go run cmd/kubeguardian/main.go --config examples/namespace-scoped-config.yaml
+
+# Run with cooldown configuration
+go run cmd/kubeguardian/main.go --config examples/cooldown-config.yaml
 ```
 
 ### Testing

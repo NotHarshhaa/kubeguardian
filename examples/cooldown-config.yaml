@@ -1,0 +1,29 @@
+# Remediation Cooldown Configuration Example
+# This configuration demonstrates the cooldown window feature
+
+controller:
+  metricsAddr: ":8080"
+  probeAddr: ":8081"
+  leaderElection: true
+
+detection:
+  evaluationInterval: 30s
+  crashLoopThreshold: 3
+  failedDeploymentThreshold: 5
+  cpuThresholdPercent: 80.0
+
+remediation:
+  enabled: true
+  dryRun: false
+  maxRetries: 3
+  retryInterval: 10s
+  autoRollbackEnabled: true
+  autoScaleEnabled: true
+  cooldownSeconds: 300  # 5 minutes cooldown between remediation actions
+
+notification:
+  slack:
+    enabled: true
+    channel: "#kubeguardian"
+    username: "KubeGuardian"
+    iconEmoji: ":robot_face:"
