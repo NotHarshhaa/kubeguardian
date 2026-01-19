@@ -10,15 +10,15 @@ RUN apk add --no-cache git ca-certificates tzdata
 COPY go.mod go.sum ./
 
 # Download dependencies
-RUN go mod download
+RUN go mod download && go mod verify
 
 # Copy source code
 COPY . .
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags='-w -s -extldflags "-static"' \
-    -a -installsuffix cgo \
+    -ldflags='-w -s' \
+    -a \
     -o kubeguardian \
     cmd/kubeguardian/main.go
 

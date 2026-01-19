@@ -8,8 +8,8 @@ import (
 	"github.com/slack-go/slack"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/kubeguardian/kubeguardian/pkg/detection"
-	"github.com/kubeguardian/kubeguardian/pkg/remediation"
+	"github.com/NotHarshhaa/kubeguardian/pkg/detection"
+	"github.com/NotHarshhaa/kubeguardian/pkg/remediation"
 )
 
 // SlackNotifier handles Slack notifications

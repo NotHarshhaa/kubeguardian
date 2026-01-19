@@ -8,9 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kubeguardian/kubeguardian/pkg/config"
-	"github.com/kubeguardian/kubeguardian/pkg/controller"
-	"github.com/kubeguardian/kubeguardian/pkg/version"
+	"github.com/NotHarshhaa/kubeguardian/pkg/config"
+	"github.com/NotHarshhaa/kubeguardian/pkg/controller"
+	"github.com/NotHarshhaa/kubeguardian/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )

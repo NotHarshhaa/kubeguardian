@@ -1,4 +1,4 @@
-module github.com/kubeguardian/kubeguardian
+module github.com/NotHarshhaa/kubeguardian
 
 go 1.21
 

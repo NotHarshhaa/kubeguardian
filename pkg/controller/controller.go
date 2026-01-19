@@ -11,10 +11,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/kubeguardian/kubeguardian/pkg/config"
-	"github.com/kubeguardian/kubeguardian/pkg/detection"
-	"github.com/kubeguardian/kubeguardian/pkg/remediation"
-	"github.com/kubeguardian/kubeguardian/pkg/notification"
+	"github.com/NotHarshhaa/kubeguardian/pkg/config"
+	"github.com/NotHarshhaa/kubeguardian/pkg/detection"
+	"github.com/NotHarshhaa/kubeguardian/pkg/remediation"
+	"github.com/NotHarshhaa/kubeguardian/pkg/notification"
 )
 
 // Controller represents the main KubeGuardian controller
