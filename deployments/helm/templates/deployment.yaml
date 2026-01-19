@@ -96,11 +96,10 @@ spec:
         {{- with .Values.volumeMounts }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.volumes }}
       volumes:
+      {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      volumes:
       - name: config
         configMap:
           name: {{ include "kubeguardian.configMapName" . }}
