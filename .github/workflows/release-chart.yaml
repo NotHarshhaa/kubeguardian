@@ -14,7 +14,8 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
+  packages: write
 
 jobs:
   release:
@@ -46,21 +47,70 @@ jobs:
 
       - name: Package Helm Chart
         run: |
+          # Clean up any existing packages
+          rm -rf .cr-release-packages
           mkdir -p .cr-release-packages
           helm package deployments/helm/ --destination .cr-release-packages
+          # List the packaged files to debug
+          ls -la .cr-release-packages/
 
-      - name: Download chart-releaser
+      - name: Install GitHub CLI
         run: |
-          wget https://github.com/helm/chart-releaser/releases/download/v1.5.0/chart-releaser_1.5.0_linux_amd64.tar.gz
-          tar -xvf chart-releaser_1.5.0_linux_amd64.tar.gz
-          sudo mv cr /usr/local/bin/cr
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh
 
-      - name: Upload Helm Chart
+      - name: Create GitHub Release with Helm Chart
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          cr upload -o NotHarshhaa -r kubeguardian --token ${{ secrets.GH_TOKEN }}
+          # Get chart version from Chart.yaml
+          CHART_VERSION=$(grep '^version:' deployments/helm/Chart.yaml | awk '{print $2}')
+          CHART_FILE=".cr-release-packages/kubeguardian-${CHART_VERSION}.tgz"
+          
+          # Debug: Check if chart file exists
+          echo "Chart version: ${CHART_VERSION}"
+          echo "Chart file: ${CHART_FILE}"
+          ls -la .cr-release-packages/
+          
+          # Check if release already exists and delete it
+          if gh release view "kubeguardian-${CHART_VERSION}" --json tagName --jq '.tagName' 2>/dev/null; then
+            echo "Release kubeguardian-${CHART_VERSION} already exists, deleting it..."
+            gh release delete "kubeguardian-${CHART_VERSION}" --yes
+          fi
+          
+          # Create release notes
+          RELEASE_NOTES="${{ github.event.inputs.release_notes || 'KubeGuardian Helm Chart Release' }}"
+          
+          # Create GitHub release with chart file
+          gh release create "kubeguardian-${CHART_VERSION}" --title "KubeGuardian ${CHART_VERSION}" --notes "${RELEASE_NOTES}" --latest "${CHART_FILE}"
+
+      - name: Verify Chart Files Before Upload
+        run: |
+          echo "=== Verifying files before artifact upload ==="
+          ls -la .cr-release-packages/ || echo "Directory does not exist"
+          if [ -d ".cr-release-packages" ]; then
+            echo "Directory exists, contents:"
+            find .cr-release-packages/ -type f -exec ls -la {} \;
+            if [ -z "$(find .cr-release-packages/ -type f)" ]; then
+              echo "Directory exists but is empty, re-packaging chart..."
+              helm package deployments/helm/ --destination .cr-release-packages
+              echo "After re-packaging:"
+              ls -la .cr-release-packages/
+            fi
+          else
+            echo "Directory .cr-release-packages does not exist, creating and packaging..."
+            mkdir -p .cr-release-packages
+            helm package deployments/helm/ --destination .cr-release-packages
+            echo "After creating and packaging:"
+            ls -la .cr-release-packages/
+          fi
 
       - name: Upload Chart Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: helm-chart
           path: .cr-release-packages/
+          if-no-files-found: warn
