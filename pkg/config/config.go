@@ -32,6 +32,8 @@ type DetectionConfig struct {
 	CrashLoopThreshold        int                        `yaml:"crashLoopThreshold"`
 	FailedDeploymentThreshold int                        `yaml:"failedDeploymentThreshold"`
 	CPUThresholdPercent       float64                    `yaml:"cpuThresholdPercent"`
+	MemoryThresholdPercent    float64                    `yaml:"memoryThresholdPercent"`
+	OOMKillThreshold          int                        `yaml:"oomKillThreshold"`
 	Namespaces                map[string]NamespaceConfig `yaml:"namespaces"`
 }
 
@@ -40,6 +42,7 @@ type NamespaceConfig struct {
 	CrashLoop   CrashLoopConfig            `yaml:"crashloop"`
 	Deployment  DeploymentConfig           `yaml:"deployment"`
 	CPU         CPUConfig                  `yaml:"cpu"`
+	Memory      MemoryConfig               `yaml:"memory"`
 	Remediation NamespaceRemediationConfig `yaml:"remediation"`
 }
 
@@ -61,6 +64,14 @@ type DeploymentConfig struct {
 type CPUConfig struct {
 	ThresholdPercent float64       `yaml:"thresholdPercent"`
 	CheckDuration    time.Duration `yaml:"checkDuration"`
+	Enabled          bool          `yaml:"enabled"`
+}
+
+// MemoryConfig contains memory monitoring settings for a namespace
+type MemoryConfig struct {
+	ThresholdPercent float64       `yaml:"thresholdPercent"`
+	CheckDuration    time.Duration `yaml:"checkDuration"`
+	OOMKillThreshold int           `yaml:"oomKillThreshold"`
 	Enabled          bool          `yaml:"enabled"`
 }
 
@@ -115,6 +126,8 @@ func DefaultConfig() *Config {
 			CrashLoopThreshold:        3,
 			FailedDeploymentThreshold: 5,
 			CPUThresholdPercent:       80.0,
+			MemoryThresholdPercent:    85.0,
+			OOMKillThreshold:          2,
 			Namespaces: map[string]NamespaceConfig{
 				"default": {
 					CrashLoop: CrashLoopConfig{
@@ -130,6 +143,12 @@ func DefaultConfig() *Config {
 					CPU: CPUConfig{
 						ThresholdPercent: 80.0,
 						CheckDuration:    5 * time.Minute,
+						Enabled:          true,
+					},
+					Memory: MemoryConfig{
+						ThresholdPercent: 85.0,
+						CheckDuration:    5 * time.Minute,
+						OOMKillThreshold: 2,
 						Enabled:          true,
 					},
 					Remediation: NamespaceRemediationConfig{

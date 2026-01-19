@@ -11,19 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🧪 **Dry-Run Mode** - Simulate remediation actions without making changes
 - 🏷️ **Namespace-Scoped Rules** - Apply different detection and remediation policies per namespace
 - ⏱️ **Remediation Cooldown Window** - Prevent repeated fixes and avoid fix loops
+- 🧠 **Memory-Based Auto-Remediation** - Detect memory spikes and OOMKills with automatic restart/scaling
 - Command-line flags for dry-run mode (`--dry-run` and `-d`)
 - Namespace-specific configuration fallback to global defaults
 - Per-namespace crash loop restart limits
 - Per-namespace deployment failure thresholds
 - Per-namespace CPU monitoring thresholds
+- Per-namespace memory monitoring thresholds and OOMKill detection
 - Per-namespace remediation policies (enable/disable, rollback, scaling)
 - Cooldown tracking with configurable cooldown periods
+- Memory spike detection with configurable thresholds
+- OOMKill detection with automatic remediation actions
 - Enhanced logging with namespace-specific context
 
 ### Features
 - CrashLoopBackOff pod detection and restart
 - Failed deployment detection and rollback
 - High CPU usage detection and auto-scaling
+- Memory spike detection and auto-remediation
+- OOMKill detection with automatic restart/scaling
 - Memory pressure detection
 - Image pull backoff detection
 - Node health monitoring

@@ -39,6 +39,7 @@ Modern Kubernetes clusters fail often:
 - CrashLoopBackOff pods
 - Failed deployments / rollouts
 - High CPU usage
+- Memory spikes and OOMKills
 - Memory pressure
 - Image pull backoffs
 - Node issues
@@ -47,6 +48,8 @@ Modern Kubernetes clusters fail often:
 - Restarts unhealthy pods
 - Rolls back failed deployments
 - Scales replicas during CPU spikes
+- Restarts pods with memory issues
+- Scales replicas for memory pressure
 - Handles resource pressure
 
 ### 📢 Notifies
@@ -102,6 +105,7 @@ image: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
 - 🚑 **CrashLoopBackOff auto-restart**
 - 🔄 **Deployment auto-rollback**
 - 📈 **CPU-based auto-scaling**
+- 🧠 **Memory-based auto-remediation** - Detect memory spikes and OOMKills
 - 🧪 **Dry-run mode** - Test remediation actions safely
 - 🏷️ **Namespace-scoped rules** - Different policies per namespace
 - ⏱️ **Remediation cooldown window** - Prevent repeated fixes and fix loops
@@ -164,6 +168,8 @@ detection:
   crashLoopThreshold: 3
   failedDeploymentThreshold: 5
   cpuThresholdPercent: 80.0
+  memoryThresholdPercent: 85.0  # Memory usage threshold
+  oomKillThreshold: 2           # OOMKill threshold
 
 remediation:
   enabled: true
@@ -179,6 +185,11 @@ namespaces:
       restartLimit: 2        # Strict - restart after 2 crashes
       checkDuration: 3m
       enabled: true
+    memory:
+      thresholdPercent: 80.0  # Lower threshold for production
+      oomKillThreshold: 1     # Immediate action on OOMKill
+      checkDuration: 3m
+      enabled: true
     remediation:
       enabled: true
       autoRollbackEnabled: true
@@ -188,6 +199,11 @@ namespaces:
   dev:
     crashloop:
       restartLimit: 5        # Lenient - restart after 5 crashes
+      checkDuration: 10m
+      enabled: true
+    memory:
+      thresholdPercent: 90.0  # Higher threshold for development
+      oomKillThreshold: 3     # More tolerant in development
       checkDuration: 10m
       enabled: true
     remediation:
@@ -361,6 +377,73 @@ cooldownSeconds: 60   # 1 minute
 cooldownSeconds: 0    # No cooldown
 ```
 
+## 🧠 Memory-Based Auto-Remediation
+
+Detect memory spikes and OOMKills with automatic restart/scaling:
+
+### Configuration
+```yaml
+detection:
+  memoryThresholdPercent: 85.0  # Memory usage threshold
+  oomKillThreshold: 2           # OOMKill threshold for remediation
+
+# Namespace-specific memory settings
+namespaces:
+  prod:
+    memory:
+      thresholdPercent: 80.0  # Lower threshold for production
+      oomKillThreshold: 1     # Immediate action on OOMKill
+      checkDuration: 3m
+      enabled: true
+  dev:
+    memory:
+      thresholdPercent: 90.0  # Higher threshold for development
+      oomKillThreshold: 3     # More tolerant in development
+      checkDuration: 10m
+      enabled: true
+```
+
+### What Memory Detection Does
+- ✅ **Memory Spike Detection** - Identifies sustained high memory usage
+- ✅ **OOMKill Detection** - Detects pods killed due to memory constraints
+- ✅ **Auto-Remediation** - Restarts pods or scales replicas automatically
+- ✅ **Namespace-Specific** - Different memory policies per environment
+
+### Memory Detection Rules
+```yaml
+# High memory usage detection
+- name: "high-memory-usage"
+  condition: memory.usage > 85%
+  duration: 5m
+  action: restart-pod
+  severity: high
+
+# OOMKill detection
+- name: "oom-kill-detected"
+  condition: container.state.terminated.reason == "OOMKilled"
+  threshold: 2 occurrences
+  actions: [restart-pod, scale-replicas]
+  severity: critical
+```
+
+### Memory Remediation Examples
+```yaml
+# Conservative (Production)
+memoryThresholdPercent: 80.0
+oomKillThreshold: 1
+
+# Moderate (Staging)
+memoryThresholdPercent: 85.0
+oomKillThreshold: 2
+
+# Aggressive (Development)
+memoryThresholdPercent: 90.0
+oomKillThreshold: 3
+
+# Disabled
+memoryThresholdPercent: 0    # Memory monitoring disabled
+```
+
 ## 🔍 How It Works
 
 1. **Watches** Kubernetes pods, nodes & deployments
@@ -494,6 +577,9 @@ go run cmd/kubeguardian/main.go --config examples/namespace-scoped-config.yaml
 
 # Run with cooldown configuration
 go run cmd/kubeguardian/main.go --config examples/cooldown-config.yaml
+
+# Run with memory-based remediation configuration
+go run cmd/kubeguardian/main.go --config examples/memory-remediation-config.yaml
 ```
 
 ### Testing
