@@ -83,7 +83,12 @@ Create the image name
 Return the proper Docker Image Registry Secret Names
 */}}
 {{- define "kubeguardian.imagePullSecrets" -}}
-{{- include "common.images.pullSecrets" (dict "images" (list .Values.image) "context" $) -}}
+{{- if .Values.imagePullSecrets }}
+imagePullSecrets:
+{{- range .Values.imagePullSecrets }}
+  - name: {{ . }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{/*

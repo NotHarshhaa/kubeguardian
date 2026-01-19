@@ -2,7 +2,7 @@
 
 # Image configuration
 image:
-  repository: kubeguardian/kubeguardian
+  repository: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian
   pullPolicy: IfNotPresent
   tag: "v1.0.0"
 
