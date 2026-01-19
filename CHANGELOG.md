@@ -8,16 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Initial project structure and core components
-- Detection rules engine with built-in rules
-- Remediation engine with automatic actions
-- Slack notification system
-- Helm chart for easy installation
-- Kubernetes manifests for simple deployment
-- Comprehensive documentation
-- Docker containerization
-- Prometheus metrics integration
-- Health probes and monitoring
+- 🧪 **Dry-Run Mode** - Simulate remediation actions without making changes
+- 🏷️ **Namespace-Scoped Rules** - Apply different detection and remediation policies per namespace
+- Command-line flags for dry-run mode (`--dry-run` and `-d`)
+- Namespace-specific configuration fallback to global defaults
+- Per-namespace crash loop restart limits
+- Per-namespace deployment failure thresholds
+- Per-namespace CPU monitoring thresholds
+- Per-namespace remediation policies (enable/disable, rollback, scaling)
+- Enhanced logging with namespace-specific context
 
 ### Features
 - CrashLoopBackOff pod detection and restart
@@ -29,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable YAML-based rules
 - Leader election support
 - Dry-run mode for testing
+- Namespace-specific rule configuration
 
 ### Security
 - Least-privilege RBAC configuration
@@ -105,6 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ ] Additional notification channels (Teams, PagerDuty)
 - [ ] Advanced rule conditions
 - [ ] Audit logging
+- [ ] Multi-namespace rule templates
+- [ ] Rule validation and testing framework
 
 ### Planned for v1.2.0
 - [ ] Multi-cluster support

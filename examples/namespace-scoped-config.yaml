@@ -1,0 +1,116 @@
+# Namespace-Scoped Configuration Example
+# This configuration demonstrates different rules per namespace
+
+controller:
+  metricsAddr: ":8080"
+  probeAddr: ":8081"
+  leaderElection: true
+
+detection:
+  evaluationInterval: 30s
+  # Global defaults (used when namespace-specific config is not provided)
+  crashLoopThreshold: 3
+  failedDeploymentThreshold: 5
+  cpuThresholdPercent: 80.0
+  
+  # Namespace-specific rules
+  namespaces:
+    # Production namespace - strict rules
+    prod:
+      crashloop:
+        restartLimit: 2        # More aggressive - restart after 2 crashes
+        checkDuration: 3m     # Check for 3 minutes
+        enabled: true
+      deployment:
+        failureThreshold: 3    # More aggressive - fail after 3 attempts
+        checkDuration: 5m      # Check for 5 minutes
+        enabled: true
+      cpu:
+        thresholdPercent: 70.0 # Lower threshold for production
+        checkDuration: 3m      # Check for 3 minutes
+        enabled: true
+      remediation:
+        enabled: true
+        autoRollbackEnabled: true
+        autoScaleEnabled: true
+        maxRetries: 2          # Fewer retries in production
+        retryInterval: 15s
+
+    # Development namespace - aggressive rules
+    dev:
+      crashloop:
+        restartLimit: 5        # More lenient - restart after 5 crashes
+        checkDuration: 10m     # Check for 10 minutes
+        enabled: true
+      deployment:
+        failureThreshold: 10    # More lenient - fail after 10 attempts
+        checkDuration: 15m      # Check for 15 minutes
+        enabled: true
+      cpu:
+        thresholdPercent: 90.0 # Higher threshold for development
+        checkDuration: 10m      # Check for 10 minutes
+        enabled: true
+      remediation:
+        enabled: true
+        autoRollbackEnabled: false   # Don't auto-rollback in dev
+        autoScaleEnabled: true
+        maxRetries: 5               # More retries in development
+        retryInterval: 30s
+
+    # Staging namespace - balanced rules
+    staging:
+      crashloop:
+        restartLimit: 3        # Balanced
+        checkDuration: 5m      # Check for 5 minutes
+        enabled: true
+      deployment:
+        failureThreshold: 5    # Balanced
+        checkDuration: 10m      # Check for 10 minutes
+        enabled: true
+      cpu:
+        thresholdPercent: 80.0 # Balanced
+        checkDuration: 5m      # Check for 5 minutes
+        enabled: true
+      remediation:
+        enabled: true
+        autoRollbackEnabled: true
+        autoScaleEnabled: true
+        maxRetries: 3
+        retryInterval: 20s
+
+    # Test namespace - minimal monitoring
+    test:
+      crashloop:
+        restartLimit: 10       # Very lenient
+        checkDuration: 15m     # Check for 15 minutes
+        enabled: true
+      deployment:
+        failureThreshold: 15    # Very lenient
+        checkDuration: 20m      # Check for 20 minutes
+        enabled: false          # Disabled in test
+      cpu:
+        thresholdPercent: 95.0 # Very high threshold
+        checkDuration: 15m      # Check for 15 minutes
+        enabled: false          # Disabled in test
+      remediation:
+        enabled: false          # No auto-remediation in test
+        autoRollbackEnabled: false
+        autoScaleEnabled: false
+        maxRetries: 1
+        retryInterval: 60s
+
+remediation:
+  # Global remediation defaults
+  enabled: true
+  dryRun: false
+  maxRetries: 3
+  retryInterval: 10s
+  autoRollbackEnabled: true
+  autoScaleEnabled: true
+
+notification:
+  slack:
+    enabled: true
+    channel: "#kubeguardian"
+    username: "KubeGuardian"
+    iconEmoji: ":robot_face:"

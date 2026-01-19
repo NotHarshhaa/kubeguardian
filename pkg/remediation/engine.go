@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -21,12 +21,22 @@ type Engine struct {
 
 // RemediationConfig contains remediation configuration
 type RemediationConfig struct {
+	Enabled             bool                                  `yaml:"enabled"`
+	MaxRetries          int                                   `yaml:"maxRetries"`
+	RetryInterval       time.Duration                         `yaml:"retryInterval"`
+	DryRun              bool                                  `yaml:"dryRun"`
+	AutoRollbackEnabled bool                                  `yaml:"autoRollbackEnabled"`
+	AutoScaleEnabled    bool                                  `yaml:"autoScaleEnabled"`
+	Namespaces          map[string]NamespaceRemediationConfig `yaml:"namespaces"`
+}
+
+// NamespaceRemediationConfig contains namespace-specific remediation settings
+type NamespaceRemediationConfig struct {
 	Enabled             bool          `yaml:"enabled"`
-	MaxRetries          int           `yaml:"maxRetries"`
-	RetryInterval       time.Duration `yaml:"retryInterval"`
-	DryRun              bool          `yaml:"dryRun"`
 	AutoRollbackEnabled bool          `yaml:"autoRollbackEnabled"`
 	AutoScaleEnabled    bool          `yaml:"autoScaleEnabled"`
+	MaxRetries          int           `yaml:"maxRetries"`
+	RetryInterval       time.Duration `yaml:"retryInterval"`
 }
 
 // Action represents a remediation action
@@ -39,12 +49,12 @@ type Action struct {
 
 // Result represents the result of a remediation action
 type Result struct {
-	Action     string    `yaml:"action"`
-	Success    bool      `yaml:"success"`
-	Message    string    `yaml:"message"`
-	Resource   string    `yaml:"resource"`
-	Namespace  string    `yaml:"namespace"`
-	ExecutedAt time.Time `yaml:"executedAt"`
+	Action     string        `yaml:"action"`
+	Success    bool          `yaml:"success"`
+	Message    string        `yaml:"message"`
+	Resource   string        `yaml:"resource"`
+	Namespace  string        `yaml:"namespace"`
+	ExecutedAt time.Time     `yaml:"executedAt"`
 	Duration   time.Duration `yaml:"duration"`
 }
 
@@ -56,19 +66,38 @@ func NewEngine(client kubernetes.Interface, config RemediationConfig) *Engine {
 	}
 }
 
+// GetNamespaceConfig returns the namespace-specific remediation configuration, falling back to defaults
+func (e *Engine) GetNamespaceConfig(namespace string) NamespaceRemediationConfig {
+	if nsConfig, exists := e.config.Namespaces[namespace]; exists {
+		return nsConfig
+	}
+
+	// Return default configuration if namespace not found
+	return NamespaceRemediationConfig{
+		Enabled:             e.config.Enabled,
+		AutoRollbackEnabled: e.config.AutoRollbackEnabled,
+		AutoScaleEnabled:    e.config.AutoScaleEnabled,
+		MaxRetries:          e.config.MaxRetries,
+		RetryInterval:       e.config.RetryInterval,
+	}
+}
+
 // ExecuteAction executes a remediation action
 func (e *Engine) ExecuteAction(ctx context.Context, action string, resource interface{}, namespace string) (*Result, error) {
-	if !e.config.Enabled {
+	// Get namespace-specific configuration
+	nsConfig := e.GetNamespaceConfig(namespace)
+
+	if !nsConfig.Enabled {
 		return &Result{
 			Action:     action,
 			Success:    false,
-			Message:    "Remediation is disabled",
+			Message:    "Remediation is disabled for this namespace",
 			ExecutedAt: time.Now(),
 		}, nil
 	}
 
 	startTime := time.Now()
-	
+
 	switch action {
 	case "restart-pod":
 		return e.restartPod(ctx, resource, namespace)
@@ -91,7 +120,7 @@ func (e *Engine) ExecuteAction(ctx context.Context, action string, resource inte
 func (e *Engine) restartPod(ctx context.Context, resource interface{}, namespace string) (*Result, error) {
 	logger := log.FromContext(ctx)
 	startTime := time.Now()
-	
+
 	pod, ok := resource.(*corev1.Pod)
 	if !ok {
 		return &Result{
@@ -145,7 +174,10 @@ func (e *Engine) restartPod(ctx context.Context, resource interface{}, namespace
 func (e *Engine) rollbackDeployment(ctx context.Context, resource interface{}, namespace string) (*Result, error) {
 	logger := log.FromContext(ctx)
 	startTime := time.Now()
-	
+
+	// Get namespace-specific configuration
+	nsConfig := e.GetNamespaceConfig(namespace)
+
 	deployment, ok := resource.(*appsv1.Deployment)
 	if !ok {
 		return &Result{
@@ -157,11 +189,11 @@ func (e *Engine) rollbackDeployment(ctx context.Context, resource interface{}, n
 		}, fmt.Errorf("resource is not a Deployment")
 	}
 
-	if !e.config.AutoRollbackEnabled {
+	if !nsConfig.AutoRollbackEnabled {
 		return &Result{
 			Action:     "rollback-deployment",
 			Success:    false,
-			Message:    "Auto rollback is disabled",
+			Message:    "Auto rollback is disabled for this namespace",
 			Resource:   deployment.Name,
 			Namespace:  deployment.Namespace,
 			ExecutedAt: time.Now(),
@@ -249,12 +281,15 @@ func (e *Engine) rollbackDeployment(ctx context.Context, resource interface{}, n
 // scaleReplicas scales up replicas for a deployment or replicaset
 func (e *Engine) scaleReplicas(ctx context.Context, resource interface{}, namespace string) (*Result, error) {
 	startTime := time.Now()
-	
-	if !e.config.AutoScaleEnabled {
+
+	// Get namespace-specific configuration
+	nsConfig := e.GetNamespaceConfig(namespace)
+
+	if !nsConfig.AutoScaleEnabled {
 		return &Result{
 			Action:     "scale-replicas",
 			Success:    false,
-			Message:    "Auto scaling is disabled",
+			Message:    "Auto scaling is disabled for this namespace",
 			ExecutedAt: time.Now(),
 			Duration:   time.Since(startTime),
 		}, nil
@@ -279,7 +314,7 @@ func (e *Engine) scaleReplicas(ctx context.Context, resource interface{}, namesp
 // scalePodDeployment scales the deployment that owns the pod
 func (e *Engine) scalePodDeployment(ctx context.Context, pod *corev1.Pod) (*Result, error) {
 	startTime := time.Now()
-	
+
 	// Find the deployment that owns this pod
 	for _, ownerRef := range pod.OwnerReferences {
 		if ownerRef.Kind == "ReplicaSet" {
@@ -328,7 +363,7 @@ func (e *Engine) scalePodDeployment(ctx context.Context, pod *corev1.Pod) (*Resu
 func (e *Engine) scaleDeployment(ctx context.Context, deployment *appsv1.Deployment) (*Result, error) {
 	logger := log.FromContext(ctx)
 	startTime := time.Now()
-	
+
 	// Get the current deployment
 	currentDeployment, err := e.client.AppsV1().Deployments(deployment.Namespace).Get(ctx, deployment.Name, metav1.GetOptions{})
 	if err != nil {
@@ -348,14 +383,14 @@ func (e *Engine) scaleDeployment(ctx context.Context, deployment *appsv1.Deploym
 	if currentDeployment.Spec.Replicas != nil {
 		currentReplicas = *currentDeployment.Spec.Replicas
 	}
-	
+
 	increase := currentReplicas / 2
 	if increase < 2 {
 		increase = 2
 	}
-	
+
 	newReplicas := currentReplicas + increase
-	
+
 	if e.config.DryRun {
 		logger.Info("Dry run: would scale deployment", "deployment", deployment.Name, "namespace", deployment.Namespace, "from", currentReplicas, "to", newReplicas)
 		return &Result{

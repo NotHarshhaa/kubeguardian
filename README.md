@@ -102,6 +102,8 @@ image: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
 - 🚑 **CrashLoopBackOff auto-restart**
 - 🔄 **Deployment auto-rollback**
 - 📈 **CPU-based auto-scaling**
+- 🧪 **Dry-run mode** - Test remediation actions safely
+- 🏷️ **Namespace-scoped rules** - Different policies per namespace
 - ⚙️ **YAML-based rule configuration**
 - 🔔 **Slack notifications**
 - 🔐 **Least-privilege RBAC**
@@ -168,6 +170,28 @@ remediation:
   autoRollbackEnabled: true
   autoScaleEnabled: true
 
+# Namespace-specific rules (optional)
+namespaces:
+  prod:
+    crashloop:
+      restartLimit: 2        # Strict - restart after 2 crashes
+      checkDuration: 3m
+      enabled: true
+    remediation:
+      enabled: true
+      autoRollbackEnabled: true
+      maxRetries: 2
+  
+  dev:
+    crashloop:
+      restartLimit: 5        # Lenient - restart after 5 crashes
+      checkDuration: 10m
+      enabled: true
+    remediation:
+      enabled: true
+      autoRollbackEnabled: false  # Don't auto-rollback in dev
+      maxRetries: 5
+
 notification:
   slack:
     enabled: false
@@ -193,6 +217,98 @@ notification:
        channel: "#alerts"
        username: "KubeGuardian"
    ```
+
+## 🧪 Dry-Run Mode
+
+Test KubeGuardian safely without making actual changes:
+
+### Command Line Usage
+```bash
+# Enable dry-run mode via command line
+./kubeguardian --dry-run --config /path/to/config.yaml
+
+# Or using the shorthand flag
+./kubeguardian -d --config /path/to/config.yaml
+```
+
+### Configuration File Usage
+```yaml
+remediation:
+  enabled: true
+  dryRun: true  # Enable dry-run mode
+```
+
+### What Dry-Run Mode Does
+- ✅ **Simulates** remediation actions without executing them
+- ✅ **Logs** what would happen with detailed information
+- ✅ **Safe testing** in production environments
+- ✅ **Builds trust** in the tool's behavior
+
+## 🏷️ Namespace-Scoped Rules
+
+Apply different detection and remediation policies per namespace:
+
+### Configuration Structure
+```yaml
+detection:
+  evaluationInterval: 30s
+  # Global defaults
+  crashLoopThreshold: 3
+  failedDeploymentThreshold: 5
+  cpuThresholdPercent: 80.0
+  
+  # Namespace-specific rules
+  namespaces:
+    prod:
+      crashloop:
+        restartLimit: 2        # Strict - restart after 2 crashes
+        checkDuration: 3m
+        enabled: true
+      deployment:
+        failureThreshold: 3    # Strict - fail after 3 attempts
+        checkDuration: 5m
+        enabled: true
+      cpu:
+        thresholdPercent: 70.0 # Lower threshold for production
+        checkDuration: 3m
+        enabled: true
+      remediation:
+        enabled: true
+        autoRollbackEnabled: true
+        autoScaleEnabled: true
+        maxRetries: 2
+
+    dev:
+      crashloop:
+        restartLimit: 5        # Lenient - restart after 5 crashes
+        checkDuration: 10m
+        enabled: true
+      deployment:
+        failureThreshold: 10   # Lenient - fail after 10 attempts
+        checkDuration: 15m
+        enabled: true
+      cpu:
+        thresholdPercent: 90.0 # Higher threshold for development
+        checkDuration: 10m
+        enabled: true
+      remediation:
+        enabled: true
+        autoRollbackEnabled: false  # Don't auto-rollback in dev
+        maxRetries: 5
+```
+
+### Use Cases
+- **Production**: Strict rules with aggressive remediation
+- **Development**: Lenient rules with debugging-friendly policies  
+- **Staging**: Balanced rules for pre-production testing
+- **Test**: Minimal monitoring with manual remediation only
+
+### Benefits
+1. **Environment-Specific Policies**: Tailor rules to each environment's needs
+2. **Risk Management**: Stricter rules in production, lenient in development
+3. **Resource Optimization**: Different monitoring intensities per namespace
+4. **Operational Flexibility**: Enable/disable features per environment
+5. **Gradual Rollout**: Test new rules in specific namespaces first
 
 ## 🔍 How It Works
 
@@ -278,12 +394,6 @@ KubeGuardian comes with built-in detection rules:
      --namespace=kubeguardian
    ```
 
-4. **Test with a failing pod**:
-   ```bash
-   # Create a pod that will crash
-   kubectl run crash-test --image=alpine --restart=Never --command -- sh -c "exit 1"
-   ```
-
 ## 📊 Monitoring
 
 ### Metrics
@@ -324,6 +434,12 @@ go run cmd/kubeguardian/main.go
 
 # Run with custom config
 go run cmd/kubeguardian/main.go --config configs/config.yaml
+
+# Run in dry-run mode
+go run cmd/kubeguardian/main.go --dry-run --config configs/config.yaml
+
+# Run with namespace-scoped configuration
+go run cmd/kubeguardian/main.go --config examples/namespace-scoped-config.yaml
 ```
 
 ### Testing
@@ -359,6 +475,8 @@ KubeGuardian follows security best practices:
 - [ ] **ML detection** - Machine learning for anomaly detection
 - [ ] **Audit logging** - Comprehensive audit trail
 - [ ] **GitOps support** - Configuration as Code
+- [ ] **Rule templates** - Pre-built namespace rule templates
+- [ ] **Configuration validation** - Rule validation and testing framework
 
 ## 🤝 Contributing
 

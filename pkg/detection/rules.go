@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -50,18 +50,47 @@ type Issue struct {
 
 // Detector represents the detection engine
 type Detector struct {
-	client     kubernetes.Interface
-	rules      []Rule
-	config     DetectionConfig
+	client kubernetes.Interface
+	rules  []Rule
+	config DetectionConfig
 }
 
 // DetectionConfig contains detection configuration
 type DetectionConfig struct {
-	RulesFile                string        `yaml:"rulesFile"`
-	EvaluationInterval       time.Duration `yaml:"evaluationInterval"`
-	CrashLoopThreshold       int           `yaml:"crashLoopThreshold"`
-	FailedDeploymentThreshold int          `yaml:"failedDeploymentThreshold"`
-	CPUThresholdPercent      float64       `yaml:"cpuThresholdPercent"`
+	RulesFile                 string                     `yaml:"rulesFile"`
+	EvaluationInterval        time.Duration              `yaml:"evaluationInterval"`
+	CrashLoopThreshold        int                        `yaml:"crashLoopThreshold"`
+	FailedDeploymentThreshold int                        `yaml:"failedDeploymentThreshold"`
+	CPUThresholdPercent       float64                    `yaml:"cpuThresholdPercent"`
+	Namespaces                map[string]NamespaceConfig `yaml:"namespaces"`
+}
+
+// NamespaceConfig contains namespace-specific detection settings
+type NamespaceConfig struct {
+	CrashLoop  CrashLoopConfig  `yaml:"crashloop"`
+	Deployment DeploymentConfig `yaml:"deployment"`
+	CPU        CPUConfig        `yaml:"cpu"`
+}
+
+// CrashLoopConfig contains crash loop detection settings for a namespace
+type CrashLoopConfig struct {
+	RestartLimit  int           `yaml:"restartLimit"`
+	CheckDuration time.Duration `yaml:"checkDuration"`
+	Enabled       bool          `yaml:"enabled"`
+}
+
+// DeploymentConfig contains deployment detection settings for a namespace
+type DeploymentConfig struct {
+	FailureThreshold int           `yaml:"failureThreshold"`
+	CheckDuration    time.Duration `yaml:"checkDuration"`
+	Enabled          bool          `yaml:"enabled"`
+}
+
+// CPUConfig contains CPU monitoring settings for a namespace
+type CPUConfig struct {
+	ThresholdPercent float64       `yaml:"thresholdPercent"`
+	CheckDuration    time.Duration `yaml:"checkDuration"`
+	Enabled          bool          `yaml:"enabled"`
 }
 
 // NewDetector creates a new detector instance
@@ -73,9 +102,35 @@ func NewDetector(client kubernetes.Interface, config DetectionConfig) *Detector 
 	}
 }
 
+// GetNamespaceConfig returns the namespace-specific configuration, falling back to defaults
+func (d *Detector) GetNamespaceConfig(namespace string) NamespaceConfig {
+	if nsConfig, exists := d.config.Namespaces[namespace]; exists {
+		return nsConfig
+	}
+
+	// Return default configuration if namespace not found
+	return NamespaceConfig{
+		CrashLoop: CrashLoopConfig{
+			RestartLimit:  d.config.CrashLoopThreshold,
+			CheckDuration: 5 * time.Minute,
+			Enabled:       true,
+		},
+		Deployment: DeploymentConfig{
+			FailureThreshold: d.config.FailedDeploymentThreshold,
+			CheckDuration:    10 * time.Minute,
+			Enabled:          true,
+		},
+		CPU: CPUConfig{
+			ThresholdPercent: d.config.CPUThresholdPercent,
+			CheckDuration:    5 * time.Minute,
+			Enabled:          true,
+		},
+	}
+}
+
 // LoadRules loads detection rules from configuration
 func (d *Detector) LoadRules() error {
-	// For now, use built-in rules. In a real implementation, 
+	// For now, use built-in rules. In a real implementation,
 	// this would load from a YAML file
 	d.rules = []Rule{
 		{
@@ -191,25 +246,36 @@ func (d *Detector) detectCrashLoopBackOff(ctx context.Context, rule Rule) ([]Iss
 	}
 
 	for _, pod := range pods.Items {
+		// Get namespace-specific configuration
+		nsConfig := d.GetNamespaceConfig(pod.Namespace)
+
+		// Skip if crash loop detection is disabled for this namespace
+		if !nsConfig.CrashLoop.Enabled {
+			continue
+		}
+
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.State.Waiting != nil &&
 				containerStatus.State.Waiting.Reason == "CrashLoopBackOff" {
-				
-				// Check if the condition has been met for the required duration
-				if d.meetsDurationCondition(containerStatus.LastTerminationState.Terminated, rule.Conditions[1].Duration) {
-					issue := Issue{
-						RuleName:    rule.Name,
-						Description: rule.Description,
-						Severity:    rule.Severity,
-						Resource:    pod.DeepCopyObject(),
-						Namespace:   pod.Namespace,
-						Name:        pod.Name,
-						Kind:        "Pod",
-						Actions:     rule.Actions,
-						Labels:      rule.Labels,
-						DetectedAt:  time.Now(),
+
+				// Use namespace-specific restart limit
+				if int(containerStatus.RestartCount) >= nsConfig.CrashLoop.RestartLimit {
+					// Check if the condition has been met for the required duration
+					if d.meetsDurationCondition(containerStatus.LastTerminationState.Terminated, &metav1.Duration{Duration: nsConfig.CrashLoop.CheckDuration}) {
+						issue := Issue{
+							RuleName:    rule.Name,
+							Description: fmt.Sprintf("%s (restart limit: %d)", rule.Description, nsConfig.CrashLoop.RestartLimit),
+							Severity:    rule.Severity,
+							Resource:    pod.DeepCopyObject(),
+							Namespace:   pod.Namespace,
+							Name:        pod.Name,
+							Kind:        "Pod",
+							Actions:     rule.Actions,
+							Labels:      rule.Labels,
+							DetectedAt:  time.Now(),
+						}
+						issues = append(issues, issue)
 					}
-					issues = append(issues, issue)
 				}
 			}
 		}
@@ -228,24 +294,35 @@ func (d *Detector) detectFailedDeployment(ctx context.Context, rule Rule) ([]Iss
 	}
 
 	for _, deployment := range deployments.Items {
+		// Get namespace-specific configuration
+		nsConfig := d.GetNamespaceConfig(deployment.Namespace)
+
+		// Skip if deployment failure detection is disabled for this namespace
+		if !nsConfig.Deployment.Enabled {
+			continue
+		}
+
 		for _, condition := range deployment.Status.Conditions {
 			if condition.Type == appsv1.DeploymentProgressing &&
 				condition.Status == corev1.ConditionFalse &&
 				condition.Reason == "ProgressDeadlineExceeded" {
-				
-				issue := Issue{
-					RuleName:    rule.Name,
-					Description: rule.Description,
-					Severity:    rule.Severity,
-					Resource:    deployment.DeepCopyObject(),
-					Namespace:   deployment.Namespace,
-					Name:        deployment.Name,
-					Kind:        "Deployment",
-					Actions:     rule.Actions,
-					Labels:      rule.Labels,
-					DetectedAt:  time.Now(),
+
+				// Check if the condition has been met for the required duration
+				if d.meetsDurationCondition(nil, &metav1.Duration{Duration: nsConfig.Deployment.CheckDuration}) {
+					issue := Issue{
+						RuleName:    rule.Name,
+						Description: fmt.Sprintf("%s (failure threshold: %d)", rule.Description, nsConfig.Deployment.FailureThreshold),
+						Severity:    rule.Severity,
+						Resource:    deployment.DeepCopyObject(),
+						Namespace:   deployment.Namespace,
+						Name:        deployment.Name,
+						Kind:        "Deployment",
+						Actions:     rule.Actions,
+						Labels:      rule.Labels,
+						DetectedAt:  time.Now(),
+					}
+					issues = append(issues, issue)
 				}
-				issues = append(issues, issue)
 			}
 		}
 	}
@@ -259,30 +336,41 @@ func (d *Detector) detectHighCPUUsage(ctx context.Context, rule Rule) ([]Issue, 
 
 	// This is a simplified implementation. In a real scenario,
 	// you would use metrics server or Prometheus to get actual CPU metrics
-	
+
 	pods, err := d.client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return issues, fmt.Errorf("failed to list pods: %w", err)
 	}
 
 	for _, pod := range pods.Items {
+		// Get namespace-specific configuration
+		nsConfig := d.GetNamespaceConfig(pod.Namespace)
+
+		// Skip if CPU monitoring is disabled for this namespace
+		if !nsConfig.CPU.Enabled {
+			continue
+		}
+
 		// Simulate high CPU detection based on restart count
 		// In reality, you'd query metrics server or Prometheus
 		for _, containerStatus := range pod.Status.ContainerStatuses {
-			if containerStatus.RestartCount > 5 {
-				issue := Issue{
-					RuleName:    rule.Name,
-					Description: rule.Description,
-					Severity:    rule.Severity,
-					Resource:    pod.DeepCopyObject(),
-					Namespace:   pod.Namespace,
-					Name:        pod.Name,
-					Kind:        "Pod",
-					Actions:     rule.Actions,
-					Labels:      rule.Labels,
-					DetectedAt:  time.Now(),
+			if int(containerStatus.RestartCount) > int(nsConfig.CPU.ThresholdPercent) {
+				// Check if the condition has been met for the required duration
+				if d.meetsDurationCondition(nil, &metav1.Duration{Duration: nsConfig.CPU.CheckDuration}) {
+					issue := Issue{
+						RuleName:    rule.Name,
+						Description: fmt.Sprintf("%s (threshold: %.1f%%)", rule.Description, nsConfig.CPU.ThresholdPercent),
+						Severity:    rule.Severity,
+						Resource:    pod.DeepCopyObject(),
+						Namespace:   pod.Namespace,
+						Name:        pod.Name,
+						Kind:        "Pod",
+						Actions:     rule.Actions,
+						Labels:      rule.Labels,
+						DetectedAt:  time.Now(),
+					}
+					issues = append(issues, issue)
 				}
-				issues = append(issues, issue)
 			}
 		}
 	}
@@ -295,6 +383,6 @@ func (d *Detector) meetsDurationCondition(terminated *corev1.ContainerStateTermi
 	if terminated == nil || duration == nil {
 		return false
 	}
-	
+
 	return time.Since(terminated.FinishedAt.Time) >= duration.Duration
 }
