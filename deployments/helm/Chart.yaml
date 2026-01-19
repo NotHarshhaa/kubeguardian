@@ -2,8 +2,8 @@ apiVersion: v2
 name: kubeguardian
 description: Automated Kubernetes Self-Healing & Auto-Remediation Tool
 type: application
-version: 1.0.0
-appVersion: "1.0.0"
+version: 1.1.0
+appVersion: "1.1.0"
 home: https://github.com/NotHarshhaa/kubeguardian
 sources:
   - https://github.com/NotHarshhaa/kubeguardian
