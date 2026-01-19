@@ -1,4 +1,4 @@
-# Build stage
+# Simple multi-stage build for KubeGuardian
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
@@ -6,47 +6,46 @@ WORKDIR /app
 # Install dependencies
 RUN apk add --no-cache git ca-certificates tzdata
 
-# Copy go mod and sum files
+# Copy go mod files
 COPY go.mod go.sum ./
 
 # Download dependencies
-RUN go mod download && go mod verify
+RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags='-w -s' \
-    -a \
-    -o kubeguardian \
-    cmd/kubeguardian/main.go
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o kubeguardian ./cmd/kubeguardian
 
 # Final stage
-FROM gcr.io/distroless/static:nonroot
+FROM alpine:latest
 
-# Import the user and group files from the builder
-COPY --from=builder /etc/passwd /etc/passwd
-COPY --from=builder /etc/group /etc/group
+# Install ca-certificates for HTTPS
+RUN apk --no-cache add ca-certificates tzdata
 
-# Copy the CA certificates
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
 
-# Copy the binary
-COPY --from=builder /app/kubeguardian /kubeguardian
+WORKDIR /app
 
-# Use non-root user
-USER 65532:65532
+# Copy binary from builder
+COPY --from=builder /app/kubeguardian .
+
+# Change ownership
+RUN chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
 
 # Expose ports
 EXPOSE 8080 8081
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD ["/kubeguardian", "--health-probe-bind-address=0.0.0.0:8081"] || exit 1
+  CMD ["./kubeguardian", "--help"] || exit 1
 
-# Set the entrypoint
-ENTRYPOINT ["/kubeguardian"]
-
-# Default arguments
+# Run the application
+ENTRYPOINT ["./kubeguardian"]
 CMD ["--metrics-bind-address=0.0.0.0:8080", "--health-probe-bind-address=0.0.0.0:8081"]
