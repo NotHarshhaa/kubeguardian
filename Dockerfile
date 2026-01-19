@@ -7,17 +7,17 @@ WORKDIR /app
 RUN apk add --no-cache git ca-certificates tzdata
 
 # Copy go mod files first (for better caching)
-COPY go.mod ./
+COPY go.mod go.sum ./
 
 # Download dependencies (cached if go.mod doesn't change)
-RUN go mod download && go mod tidy
+RUN go mod download && go mod verify
 
 # Copy only necessary source files
 COPY cmd/ ./cmd/
 COPY pkg/ ./pkg/
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o kubeguardian ./cmd/kubeguardian
+# Ensure dependencies are available and build the application
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o kubeguardian ./cmd/kubeguardian
 
 # Final stage
 FROM alpine:latest
