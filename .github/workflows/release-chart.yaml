@@ -14,7 +14,8 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
+  packages: write
 
 jobs:
   release:
@@ -49,15 +50,26 @@ jobs:
           mkdir -p .cr-release-packages
           helm package deployments/helm/ --destination .cr-release-packages
 
-      - name: Download chart-releaser
+      - name: Install GitHub CLI
         run: |
-          wget https://github.com/helm/chart-releaser/releases/download/v1.5.0/chart-releaser_1.5.0_linux_amd64.tar.gz
-          tar -xvf chart-releaser_1.5.0_linux_amd64.tar.gz
-          sudo mv cr /usr/local/bin/cr
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh
 
-      - name: Upload Helm Chart
+      - name: Create GitHub Release with Helm Chart
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          cr upload -o NotHarshhaa -r kubeguardian --token ${{ secrets.GH_TOKEN }}
+          # Get chart version from Chart.yaml
+          CHART_VERSION=$(grep '^version:' deployments/helm/Chart.yaml | awk '{print $2}')
+          CHART_FILE=".cr-release-packages/kubeguardian-${CHART_VERSION}.tgz"
+          
+          # Create release notes
+          RELEASE_NOTES="${{ github.event.inputs.release_notes || 'KubeGuardian Helm Chart Release' }}"
+          
+          # Create GitHub release with chart file
+          gh release create "kubeguardian-${CHART_VERSION}" --title "KubeGuardian ${CHART_VERSION}" --notes "${RELEASE_NOTES}" --latest "${CHART_FILE}"
 
       - name: Upload Chart Artifact
         uses: actions/upload-artifact@v4
