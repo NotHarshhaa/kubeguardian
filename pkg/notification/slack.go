@@ -2,8 +2,10 @@ package notification
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/slack-go/slack"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -47,12 +49,12 @@ func (s *SlackNotifier) SendIssueNotification(ctx context.Context, issue detecti
 	}
 
 	logger := log.FromContext(ctx)
-	
+
 	// Create Slack attachment
 	attachment := slack.Attachment{
-		Color:       s.getColorBySeverity(issue.Severity),
-		Title:       fmt.Sprintf("🚑 KubeGuardian Alert: %s", issue.RuleName),
-		Description: issue.Description,
+		Color: s.getColorBySeverity(issue.Severity),
+		Title: fmt.Sprintf("🚑 KubeGuardian Alert: %s", issue.RuleName),
+		Text:  issue.Description,
 		Fields: []slack.AttachmentField{
 			{
 				Title: "Resource",
@@ -82,7 +84,7 @@ func (s *SlackNotifier) SendIssueNotification(ctx context.Context, issue detecti
 		},
 		Footer:     "KubeGuardian",
 		FooterIcon: "https://platform.slack-edge.com/img/default_application_icon.png",
-		Timestamp: issue.DetectedAt.Unix(),
+		Ts:         json.Number(fmt.Sprintf("%d", issue.DetectedAt.Unix())),
 	}
 
 	// Send the message
@@ -109,7 +111,7 @@ func (s *SlackNotifier) SendRemediationNotification(ctx context.Context, issue d
 	}
 
 	logger := log.FromContext(ctx)
-	
+
 	// Create Slack attachment
 	var color string
 	if result.Success {
@@ -119,9 +121,9 @@ func (s *SlackNotifier) SendRemediationNotification(ctx context.Context, issue d
 	}
 
 	attachment := slack.Attachment{
-		Color:       color,
-		Title:       fmt.Sprintf("🔧 KubeGuardian Action: %s", result.Action),
-		Description: result.Message,
+		Color: color,
+		Title: fmt.Sprintf("🔧 KubeGuardian Action: %s", result.Action),
+		Text:  result.Message,
 		Fields: []slack.AttachmentField{
 			{
 				Title: "Resource",
@@ -161,7 +163,7 @@ func (s *SlackNotifier) SendRemediationNotification(ctx context.Context, issue d
 		},
 		Footer:     "KubeGuardian",
 		FooterIcon: "https://platform.slack-edge.com/img/default_application_icon.png",
-		Timestamp: result.ExecutedAt.Unix(),
+		Ts:         json.Number(fmt.Sprintf("%d", result.ExecutedAt.Unix())),
 	}
 
 	// Send the message
@@ -188,11 +190,11 @@ func (s *SlackNotifier) SendStartupNotification(ctx context.Context, version str
 	}
 
 	logger := log.FromContext(ctx)
-	
+
 	attachment := slack.Attachment{
-		Color:       "good",
-		Title:       "🚀 KubeGuardian Started",
-		Description: fmt.Sprintf("KubeGuardian v%s is now monitoring your Kubernetes cluster", version),
+		Color: "good",
+		Title: "🚀 KubeGuardian Started",
+		Text:  fmt.Sprintf("KubeGuardian v%s is now monitoring your Kubernetes cluster", version),
 		Fields: []slack.AttachmentField{
 			{
 				Title: "Version",
@@ -207,7 +209,7 @@ func (s *SlackNotifier) SendStartupNotification(ctx context.Context, version str
 		},
 		Footer:     "KubeGuardian",
 		FooterIcon: "https://platform.slack-edge.com/img/default_application_icon.png",
-		Timestamp: slack.Now(),
+		Ts:         json.Number(fmt.Sprintf("%d", time.Now().Unix())),
 	}
 
 	_, _, err := s.client.PostMessage(
@@ -249,7 +251,7 @@ func (s *SlackNotifier) TestConnection(ctx context.Context) error {
 	}
 
 	logger := log.FromContext(ctx)
-	
+
 	// Test by getting auth info
 	_, err := s.client.AuthTest()
 	if err != nil {

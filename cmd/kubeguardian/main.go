@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,9 +15,9 @@ import (
 )
 
 var (
-	configFile   = flag.String("config", "", "Path to configuration file")
-	metricsAddr  = flag.String("metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	probeAddr    = flag.String("health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	configFile     = flag.String("config", "", "Path to configuration file")
+	metricsAddr    = flag.String("metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	probeAddr      = flag.String("health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	leaderElection = flag.Bool("leader-elect", false, "Enable leader election for controller manager. "+
 		"Enabling this will ensure there is only one active controller manager.")
 	zapOpts = zap.Options{
@@ -27,7 +26,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&configFile, "c", "", "Path to configuration file (shorthand)")
+	flag.StringVar(configFile, "c", "", "Path to configuration file (shorthand)")
 	zapOpts.BindFlags(flag.CommandLine)
 }
 

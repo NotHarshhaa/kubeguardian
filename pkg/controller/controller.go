@@ -7,22 +7,22 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/NotHarshhaa/kubeguardian/pkg/config"
 	"github.com/NotHarshhaa/kubeguardian/pkg/detection"
-	"github.com/NotHarshhaa/kubeguardian/pkg/remediation"
 	"github.com/NotHarshhaa/kubeguardian/pkg/notification"
+	"github.com/NotHarshhaa/kubeguardian/pkg/remediation"
 )
 
 // Controller represents the main KubeGuardian controller
 type Controller struct {
-	client       kubernetes.Interface
-	config       *config.Config
-	detector     *detection.Detector
-	remediator   *remediation.Engine
+	client        kubernetes.Interface
+	config        *config.Config
+	detector      *detection.Detector
+	remediator    *remediation.Engine
 	slackNotifier *notification.SlackNotifier
 }
 
@@ -40,16 +40,38 @@ func NewController(cfg *config.Config) (*Controller, error) {
 	}
 
 	// Create detector
-	detector := detection.NewDetector(client, cfg.Detection)
+	detectionConfig := detection.DetectionConfig{
+		RulesFile:                 cfg.Detection.RulesFile,
+		EvaluationInterval:        cfg.Detection.EvaluationInterval,
+		CrashLoopThreshold:        cfg.Detection.CrashLoopThreshold,
+		FailedDeploymentThreshold: cfg.Detection.FailedDeploymentThreshold,
+		CPUThresholdPercent:       cfg.Detection.CPUThresholdPercent,
+	}
+	detector := detection.NewDetector(client, detectionConfig)
 	if err := detector.LoadRules(); err != nil {
 		return nil, fmt.Errorf("failed to load detection rules: %w", err)
 	}
 
 	// Create remediation engine
-	remediator := remediation.NewEngine(client, cfg.Remediation)
+	remediationConfig := remediation.RemediationConfig{
+		Enabled:             cfg.Remediation.Enabled,
+		MaxRetries:          cfg.Remediation.MaxRetries,
+		RetryInterval:       cfg.Remediation.RetryInterval,
+		DryRun:              cfg.Remediation.DryRun,
+		AutoRollbackEnabled: cfg.Remediation.AutoRollbackEnabled,
+		AutoScaleEnabled:    cfg.Remediation.AutoScaleEnabled,
+	}
+	remediator := remediation.NewEngine(client, remediationConfig)
 
 	// Create Slack notifier
-	slackNotifier := notification.NewSlackNotifier(cfg.Notification.Slack)
+	slackConfig := notification.SlackConfig{
+		Enabled:   cfg.Notification.Slack.Enabled,
+		Token:     cfg.Notification.Slack.Token,
+		Channel:   cfg.Notification.Slack.Channel,
+		Username:  cfg.Notification.Slack.Username,
+		IconEmoji: cfg.Notification.Slack.IconEmoji,
+	}
+	slackNotifier := notification.NewSlackNotifier(slackConfig)
 
 	return &Controller{
 		client:        client,
@@ -63,7 +85,7 @@ func NewController(cfg *config.Config) (*Controller, error) {
 // Run starts the controller
 func (c *Controller) Run(ctx context.Context) error {
 	logger := log.FromContext(ctx)
-	
+
 	// Test Slack connection if enabled
 	if c.slackNotifier != nil {
 		if err := c.slackNotifier.TestConnection(ctx); err != nil {
@@ -138,7 +160,7 @@ func (c *Controller) processIssue(ctx context.Context, issue detection.Issue) er
 	// Execute remediation actions
 	for _, action := range issue.Actions {
 		logger.Info("Executing remediation action", "action", action, "resource", issue.Name)
-		
+
 		result, err := c.remediator.ExecuteAction(ctx, action, issue.Resource, issue.Namespace)
 		if err != nil {
 			logger.Error(err, "Failed to execute remediation action", "action", action)
@@ -166,10 +188,9 @@ func SetupManager(cfg *config.Config) (manager.Manager, error) {
 	}
 
 	mgr, err := manager.New(config, manager.Options{
-		MetricsBindAddress: cfg.Controller.MetricsAddr,
 		HealthProbeBindAddress: cfg.Controller.ProbeAddr,
-		LeaderElection:   cfg.Controller.LeaderElection,
-		LeaderElectionID: "kubeguardian-leader-election",
+		LeaderElection:         cfg.Controller.LeaderElection,
+		LeaderElectionID:       "kubeguardian-leader-election",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create manager: %w", err)
@@ -181,7 +202,7 @@ func SetupManager(cfg *config.Config) (manager.Manager, error) {
 // StartManager starts the controller-runtime manager
 func StartManager(ctx context.Context, mgr manager.Manager) error {
 	logger := log.FromContext(ctx)
-	
+
 	// Setup signals
 	ctx = signals.SetupSignalHandler()
 
