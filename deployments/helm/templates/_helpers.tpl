@@ -69,13 +69,21 @@ Create the name of the service account to use
 Create the image name
 */}}
 {{- define "kubeguardian.image" -}}
-{{- $registry := .Values.image.registry -}}
+{{- $registry := .Values.image.registry | default "" -}}
 {{- $repository := .Values.image.repository -}}
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
 {{- if .Values.image.digest }}
+{{- if $registry }}
 {{- printf "%s/%s@%s" $registry $repository .Values.image.digest -}}
 {{- else -}}
+{{- printf "%s@%s" $repository .Values.image.digest -}}
+{{- end -}}
+{{- else -}}
+{{- if $registry }}
 {{- printf "%s/%s:%s" $registry $repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end -}}
 {{- end -}}
 {{- end }}
 
