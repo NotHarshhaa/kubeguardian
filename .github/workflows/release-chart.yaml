@@ -12,16 +12,9 @@ on:
         description: 'Release notes'
         required: false
         type: string
-      deploy_to_pages:
-        description: 'Deploy to GitHub Pages'
-        required: true
-        type: boolean
-        default: true
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   release:
@@ -56,9 +49,6 @@ jobs:
           mkdir -p .cr-release-packages
           helm package deployments/helm/ --destination .cr-release-packages
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
       - name: Download chart-releaser
         run: |
           wget https://github.com/helm/chart-releaser/releases/download/v1.5.0/chart-releaser_1.5.0_linux_amd64.tar.gz
@@ -69,47 +59,8 @@ jobs:
         run: |
           cr upload -o NotHarshhaa -r kubeguardian --token ${{ secrets.GH_TOKEN }}
 
-      - name: Index Helm Chart
-        run: |
-          cr index -o NotHarshhaa -r kubeguardian --index-path index.yaml --push --token ${{ secrets.GH_TOKEN }}
-
-      - name: Setup GitHub Pages
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload Chart Artifact
+        uses: actions/upload-artifact@v4
         with:
-          path: .cr-release-packages
-
-  deploy:
-    needs: release
-    runs-on: ubuntu-latest
-    if: ${{ inputs.deploy_to_pages == true }}
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Download chart-releaser
-        run: |
-          wget https://github.com/helm/chart-releaser/releases/download/v1.5.0/chart-releaser_1.5.0_linux_amd64.tar.gz
-          tar -xvf chart-releaser_1.5.0_linux_amd64.tar.gz
-          sudo mv cr /usr/local/bin/cr
-
-      - name: Build Pages
-        run: |
-          cr index -o NotHarshhaa -r kubeguardian --index-path index.yaml --push --token ${{ secrets.GH_TOKEN }}
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          name: helm-chart
+          path: .cr-release-packages/

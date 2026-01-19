@@ -71,6 +71,36 @@ Modern Kubernetes clusters fail often:
 [Slack / Logs]
 ```
 
+## 💻 Supported Platforms
+
+KubeGuardian supports multiple architectures for maximum compatibility:
+
+| Platform | Architecture | Use Case |
+|----------|-------------|---------|
+| 🐧 **Linux** | `amd64` | Standard servers, cloud VMs |
+| 🐧 **Linux** | `arm64` | Apple M1/M2, ARM servers, Raspberry Pi 4 |
+| 🐧 **Linux** | `arm/v7` | Raspberry Pi 3/Zero, older ARM devices |
+| 🐧 **Linux** | `ppc64le` | IBM Power Systems, mainframe |
+| 🪟 **Windows** | `amd64` | Windows containers, WSL2 |
+
+### 🚀 Multi-Architecture Docker Image
+
+```bash
+# Docker automatically pulls the right architecture for your platform
+docker pull ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
+
+# Kubernetes handles architecture selection automatically
+image: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
+```
+
+### 📦 Platform-Specific Benefits
+
+- **Edge Computing**: Perfect for Raspberry Pi and ARM edge devices
+- **Cloud Native**: Supports all major cloud providers and architectures
+- **Development**: Works natively on Windows, macOS (Apple Silicon), and Linux
+- **Enterprise**: Ready for IBM Power Systems and mainframe environments
+- **Cost Optimization**: Leverage cheaper ARM instances where available
+
 ## ✨ Features (v1 – MVP)
 
 - 🚑 **CrashLoopBackOff auto-restart**
