@@ -3,10 +3,10 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"time"
 
 	"gopkg.in/yaml.v3"
-	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // ValidationResult represents a configuration validation result
@@ -121,8 +121,9 @@ func (c *Config) validateNotification(result *ValidationResult) {
 
 		// Validate channel format
 		if c.Notification.Slack.Channel != "" {
-			if errs := validation.ValidateServiceAccountName(c.Notification.Slack.Channel[1:]); len(errs) > 0 {
-				result.Warnings = append(result.Warnings, fmt.Sprintf("slack channel name may be invalid: %v", errs))
+			// Simple validation for Slack channel format
+			if !isValidSlackChannel(c.Notification.Slack.Channel) {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("slack channel name may be invalid: %s", c.Notification.Slack.Channel))
 			}
 		}
 	}
@@ -131,8 +132,8 @@ func (c *Config) validateNotification(result *ValidationResult) {
 func (c *Config) validateNamespaces(result *ValidationResult) {
 	for namespace, nsConfig := range c.Detection.Namespaces {
 		// Validate namespace name
-		if errs := validation.ValidateNamespaceName(namespace); len(errs) > 0 {
-			result.Errors = append(result.Errors, fmt.Sprintf("invalid namespace name '%s': %v", namespace, errs))
+		if !isValidNamespaceName(namespace) {
+			result.Errors = append(result.Errors, fmt.Sprintf("invalid namespace name '%s'", namespace))
 			continue
 		}
 
@@ -189,6 +190,23 @@ func (c *Config) validateNamespaces(result *ValidationResult) {
 			result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': cooldown seconds cannot be negative", namespace))
 		}
 	}
+}
+
+// isValidNamespaceName validates Kubernetes namespace name
+func isValidNamespaceName(name string) bool {
+	// Kubernetes namespace name regex
+	namespaceRegex := regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	return namespaceRegex.MatchString(name) && len(name) <= 63
+}
+
+// isValidSlackChannel validates Slack channel name
+func isValidSlackChannel(channel string) bool {
+	// Slack channel names start with # and contain lowercase letters, numbers, hyphens, and underscores
+	if len(channel) < 2 || channel[0] != '#' {
+		return false
+	}
+	channelRegex := regexp.MustCompile(`^#[a-z0-9_-]+$`)
+	return channelRegex.MatchString(channel) && len(channel) <= 22
 }
 
 // Config represents the main configuration for KubeGuardian
