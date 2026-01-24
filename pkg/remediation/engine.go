@@ -165,14 +165,26 @@ func (e *Engine) ExecuteAction(ctx context.Context, action string, resource inte
 
 // getResourceName extracts the resource name from different resource types
 func (e *Engine) getResourceName(resource interface{}) string {
-	switch r := resource.(type) {
-	case *corev1.Pod:
-		return r.Name
-	case *appsv1.Deployment:
-		return r.Name
-	default:
+	if resource == nil {
 		return "unknown"
 	}
+
+	switch r := resource.(type) {
+	case *corev1.Pod:
+		if r != nil {
+			return r.Name
+		}
+	case *appsv1.Deployment:
+		if r != nil {
+			return r.Name
+		}
+	default:
+		// Try to get name using type assertion with metav1.Object
+		if obj, ok := resource.(metav1.Object); ok {
+			return obj.GetName()
+		}
+	}
+	return "unknown"
 }
 
 // isInCooldown checks if an action is currently in cooldown period
@@ -215,15 +227,25 @@ func (e *Engine) restartPod(ctx context.Context, resource interface{}, namespace
 	logger := log.FromContext(ctx)
 	startTime := time.Now()
 
-	pod, ok := resource.(*corev1.Pod)
-	if !ok {
+	if resource == nil {
 		return &Result{
 			Action:     "restart-pod",
 			Success:    false,
-			Message:    "Resource is not a Pod",
+			Message:    "Resource is nil",
 			ExecutedAt: time.Now(),
 			Duration:   time.Since(startTime),
-		}, fmt.Errorf("resource is not a Pod")
+		}, fmt.Errorf("resource is nil")
+	}
+
+	pod, ok := resource.(*corev1.Pod)
+	if !ok || pod == nil {
+		return &Result{
+			Action:     "restart-pod",
+			Success:    false,
+			Message:    "Resource is not a valid Pod",
+			ExecutedAt: time.Now(),
+			Duration:   time.Since(startTime),
+		}, fmt.Errorf("resource is not a valid Pod")
 	}
 
 	if e.config.DryRun {
@@ -239,7 +261,15 @@ func (e *Engine) restartPod(ctx context.Context, resource interface{}, namespace
 		}, nil
 	}
 
-	err := e.client.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+	// Use propagation policy to ensure graceful deletion
+	deleteOptions := metav1.DeleteOptions{
+		PropagationPolicy: func() *metav1.DeletionPropagation {
+			policy := metav1.DeletePropagationForeground
+			return &policy
+		}(),
+	}
+
+	err := e.client.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, deleteOptions)
 	if err != nil {
 		return &Result{
 			Action:     "restart-pod",
@@ -272,15 +302,25 @@ func (e *Engine) rollbackDeployment(ctx context.Context, resource interface{}, n
 	// Get namespace-specific configuration
 	nsConfig := e.GetNamespaceConfig(namespace)
 
-	deployment, ok := resource.(*appsv1.Deployment)
-	if !ok {
+	if resource == nil {
 		return &Result{
 			Action:     "rollback-deployment",
 			Success:    false,
-			Message:    "Resource is not a Deployment",
+			Message:    "Resource is nil",
 			ExecutedAt: time.Now(),
 			Duration:   time.Since(startTime),
-		}, fmt.Errorf("resource is not a Deployment")
+		}, fmt.Errorf("resource is nil")
+	}
+
+	deployment, ok := resource.(*appsv1.Deployment)
+	if !ok || deployment == nil {
+		return &Result{
+			Action:     "rollback-deployment",
+			Success:    false,
+			Message:    "Resource is not a valid Deployment",
+			ExecutedAt: time.Now(),
+			Duration:   time.Since(startTime),
+		}, fmt.Errorf("resource is not a valid Deployment")
 	}
 
 	if !nsConfig.AutoRollbackEnabled {
@@ -308,10 +348,8 @@ func (e *Engine) rollbackDeployment(ctx context.Context, resource interface{}, n
 		}, nil
 	}
 
-	// Get the deployment's rollout history to find the previous revision
-	// Note: GetRolloutHistory is not available in the client-go library
-	// We'll use a different approach to get revision information
-	deployment, err := e.client.AppsV1().Deployments(deployment.Namespace).Get(ctx, deployment.Name, metav1.GetOptions{})
+	// Get the current deployment to check revision
+	currentDeployment, err := e.client.AppsV1().Deployments(deployment.Namespace).Get(ctx, deployment.Name, metav1.GetOptions{})
 	if err != nil {
 		return &Result{
 			Action:     "rollback-deployment",
@@ -325,7 +363,7 @@ func (e *Engine) rollbackDeployment(ctx context.Context, resource interface{}, n
 	}
 
 	// Get the current revision from annotations
-	currentRevision := deployment.Annotations["deployment.kubernetes.io/revision"]
+	currentRevision := currentDeployment.Annotations["deployment.kubernetes.io/revision"]
 	if currentRevision == "" {
 		currentRevision = "1"
 	}
@@ -409,6 +447,16 @@ func (e *Engine) scaleReplicas(ctx context.Context, resource interface{}, namesp
 func (e *Engine) scalePodDeployment(ctx context.Context, pod *corev1.Pod) (*Result, error) {
 	startTime := time.Now()
 
+	if pod == nil {
+		return &Result{
+			Action:     "scale-replicas",
+			Success:    false,
+			Message:    "Pod is nil",
+			ExecutedAt: time.Now(),
+			Duration:   time.Since(startTime),
+		}, fmt.Errorf("pod is nil")
+	}
+
 	// Find the deployment that owns this pod
 	for _, ownerRef := range pod.OwnerReferences {
 		if ownerRef.Kind == "ReplicaSet" {
@@ -428,15 +476,20 @@ func (e *Engine) scalePodDeployment(ctx context.Context, pod *corev1.Pod) (*Resu
 
 			for _, rsOwnerRef := range replicaSet.OwnerReferences {
 				if rsOwnerRef.Kind == "Deployment" {
-					return e.scaleDeployment(ctx, &appsv1.Deployment{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      rsOwnerRef.Name,
-							Namespace: pod.Namespace,
-						},
-						Spec: appsv1.DeploymentSpec{
-							Replicas: replicaSet.Spec.Replicas,
-						},
-					})
+					// Get the actual deployment to ensure we have correct spec
+					deployment, err := e.client.AppsV1().Deployments(pod.Namespace).Get(ctx, rsOwnerRef.Name, metav1.GetOptions{})
+					if err != nil {
+						return &Result{
+							Action:     "scale-replicas",
+							Success:    false,
+							Message:    fmt.Sprintf("Failed to get deployment: %v", err),
+							Resource:   pod.Name,
+							Namespace:  pod.Namespace,
+							ExecutedAt: time.Now(),
+							Duration:   time.Since(startTime),
+						}, err
+					}
+					return e.scaleDeployment(ctx, deployment)
 				}
 			}
 		}
@@ -458,6 +511,16 @@ func (e *Engine) scaleDeployment(ctx context.Context, deployment *appsv1.Deploym
 	logger := log.FromContext(ctx)
 	startTime := time.Now()
 
+	if deployment == nil {
+		return &Result{
+			Action:     "scale-replicas",
+			Success:    false,
+			Message:    "Deployment is nil",
+			ExecutedAt: time.Now(),
+			Duration:   time.Since(startTime),
+		}, fmt.Errorf("deployment is nil")
+	}
+
 	// Get the current deployment
 	currentDeployment, err := e.client.AppsV1().Deployments(deployment.Namespace).Get(ctx, deployment.Name, metav1.GetOptions{})
 	if err != nil {
@@ -478,12 +541,29 @@ func (e *Engine) scaleDeployment(ctx context.Context, deployment *appsv1.Deploym
 		currentReplicas = *currentDeployment.Spec.Replicas
 	}
 
+	// Set reasonable limits to prevent excessive scaling
+	maxReplicas := int32(10)
+	if currentReplicas >= maxReplicas {
+		return &Result{
+			Action:     "scale-replicas",
+			Success:    false,
+			Message:    fmt.Sprintf("Deployment already at maximum replicas (%d)", maxReplicas),
+			Resource:   deployment.Name,
+			Namespace:  deployment.Namespace,
+			ExecutedAt: time.Now(),
+			Duration:   time.Since(startTime),
+		}, fmt.Errorf("deployment already at maximum replicas")
+	}
+
 	increase := currentReplicas / 2
 	if increase < 2 {
 		increase = 2
 	}
 
 	newReplicas := currentReplicas + increase
+	if newReplicas > maxReplicas {
+		newReplicas = maxReplicas
+	}
 
 	if e.config.DryRun {
 		logger.Info("Dry run: would scale deployment", "deployment", deployment.Name, "namespace", deployment.Namespace, "from", currentReplicas, "to", newReplicas)

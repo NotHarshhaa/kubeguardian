@@ -403,15 +403,22 @@ func (d *Detector) detectHighCPUUsage(ctx context.Context, rule Rule) ([]Issue, 
 			continue
 		}
 
-		// Simulate high CPU detection based on restart count
-		// In reality, you'd query metrics server or Prometheus
+		// Simulate high CPU detection based on restart count and container status
+		// This is still a placeholder - in reality you'd query metrics server
 		for _, containerStatus := range pod.Status.ContainerStatuses {
-			if int(containerStatus.RestartCount) > int(nsConfig.CPU.ThresholdPercent) {
+			// Use a more realistic heuristic for high CPU simulation
+			// High restart count could indicate resource pressure including CPU
+			restartThreshold := int32(nsConfig.CPU.ThresholdPercent / 10) // Convert percentage to restart count threshold
+			if restartThreshold < 1 {
+				restartThreshold = 1
+			}
+			
+			if containerStatus.RestartCount >= restartThreshold {
 				// Check if the condition has been met for the required duration
-				if d.meetsDurationCondition(nil, &metav1.Duration{Duration: nsConfig.CPU.CheckDuration}) {
+				if d.meetsDurationCondition(containerStatus.LastTerminationState.Terminated, &metav1.Duration{Duration: nsConfig.CPU.CheckDuration}) {
 					issue := Issue{
 						RuleName:    rule.Name,
-						Description: fmt.Sprintf("%s (threshold: %.1f%%)", rule.Description, nsConfig.CPU.ThresholdPercent),
+						Description: fmt.Sprintf("%s (threshold: %.1f%%, restarts: %d)", rule.Description, nsConfig.CPU.ThresholdPercent, containerStatus.RestartCount),
 						Severity:    rule.Severity,
 						Resource:    pod.DeepCopyObject(),
 						Namespace:   pod.Namespace,
@@ -534,7 +541,19 @@ func (d *Detector) detectOOMKilled(ctx context.Context, rule Rule) ([]Issue, err
 
 // meetsDurationCondition checks if a condition has been met for the required duration
 func (d *Detector) meetsDurationCondition(terminated *corev1.ContainerStateTerminated, duration *metav1.Duration) bool {
-	if terminated == nil || duration == nil {
+	if duration == nil || duration.Duration == 0 {
+		// No duration requirement, condition is met immediately
+		return true
+	}
+
+	if terminated == nil {
+		// No termination state, but we have a duration requirement
+		// In this case, we should check the current state instead
+		return false
+	}
+
+	if terminated.FinishedAt.IsZero() {
+		// Termination time is not set
 		return false
 	}
 

@@ -102,6 +102,10 @@ func (c *Controller) Run(ctx context.Context) error {
 	ticker := time.NewTicker(c.config.Detection.EvaluationInterval)
 	defer ticker.Stop()
 
+	// Start cooldown cleanup goroutine
+	cleanupTicker := time.NewTicker(10 * time.Minute)
+	defer cleanupTicker.Stop()
+
 	logger.Info("KubeGuardian started", "evaluationInterval", c.config.Detection.EvaluationInterval)
 
 	for {
@@ -113,6 +117,8 @@ func (c *Controller) Run(ctx context.Context) error {
 			if err := c.runDetectionCycle(ctx); err != nil {
 				logger.Error(err, "Detection cycle failed")
 			}
+		case <-cleanupTicker.C:
+			c.remediator.CleanupCooldowns()
 		}
 	}
 }
@@ -164,17 +170,21 @@ func (c *Controller) processIssue(ctx context.Context, issue detection.Issue) er
 		result, err := c.remediator.ExecuteAction(ctx, action, issue.Resource, issue.Namespace)
 		if err != nil {
 			logger.Error(err, "Failed to execute remediation action", "action", action)
+			// Continue with other actions even if one fails
 			continue
 		}
 
-		// Send remediation notification
-		if c.slackNotifier != nil {
-			if err := c.slackNotifier.SendRemediationNotification(ctx, issue, *result); err != nil {
-				logger.Error(err, "Failed to send remediation notification")
+		// Only send notification if result is not nil
+		if result != nil {
+			// Send remediation notification
+			if c.slackNotifier != nil {
+				if err := c.slackNotifier.SendRemediationNotification(ctx, issue, *result); err != nil {
+					logger.Error(err, "Failed to send remediation notification")
+				}
 			}
-		}
 
-		logger.Info("Remediation action completed", "action", action, "success", result.Success, "message", result.Message)
+			logger.Info("Remediation action completed", "action", action, "success", result.Success, "message", result.Message)
+		}
 	}
 
 	return nil
