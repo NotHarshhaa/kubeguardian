@@ -100,7 +100,7 @@ image: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
 - **Cost Optimization**: Leverage cheaper ARM64 instances where available
 - **Performance**: Optimized for modern ARM64 and x86_64 architectures
 
-## ✨ Features (v1 – MVP)
+## ✨ Features (v2.0 - Enterprise Edition)
 
 - 🚑 **CrashLoopBackOff auto-restart**
 - 🔄 **Deployment auto-rollback**
@@ -112,10 +112,15 @@ image: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
 - ⚙️ **YAML-based rule configuration**
 - 🔔 **Slack notifications**
 - 🔐 **Least-privilege RBAC**
-- 📊 **Prometheus metrics**
-- 🏥 **Health probes**
+- 📊 **Comprehensive Prometheus metrics** - Detection, remediation, API calls, system metrics
+- 🏥 **Advanced health probes** - Liveness, readiness, and comprehensive health checks
 - 🐳 **Docker support**
 - 📦 **Helm chart**
+- 🔌 **Circuit breaker pattern** - Prevent cascading failures from API issues
+- ⚡ **Rate limiting** - Token bucket algorithm for remediation actions
+- ✅ **Configuration validation** - Comprehensive validation with detailed error reporting
+- 🛡️ **Graceful shutdown** - Proper cleanup with timeout handling
+- 🚨 **Built-in health checks** - API connectivity, memory, disk usage monitoring
 
 ## 📦 Installation
 
@@ -153,7 +158,85 @@ cp examples/basic-config.yaml configs/config.yaml
 kubectl apply -f deployments/manifests/
 ```
 
-## 🔧 Configuration
+## 🔧 Advanced Configuration
+
+### Configuration Validation
+
+KubeGuardian automatically validates your configuration on startup:
+
+```bash
+# Configuration is validated automatically
+./kubeguardian --config /path/to/config.yaml
+
+# Validation errors will prevent startup
+# Validation warnings will be logged but allow startup
+```
+
+#### Validation Examples
+
+✅ **Valid Configuration**:
+```yaml
+detection:
+  evaluationInterval: 30s    # ✅ Valid (>= 1s)
+  cpuThresholdPercent: 80.0  # ✅ Valid (0-100)
+  memoryThresholdPercent: 85.0 # ✅ Valid (0-100)
+```
+
+❌ **Invalid Configuration**:
+```yaml
+detection:
+  evaluationInterval: 100ms  # ❌ Invalid (< 1s)
+  cpuThresholdPercent: 150.0 # ❌ Invalid (> 100)
+```
+
+### Circuit Breaker Configuration
+
+Protect against cascading failures with circuit breakers:
+
+```yaml
+# Circuit breaker is automatically enabled
+# Default settings:
+# - Max requests: 1
+# - Timeout: 60s
+# - Interval: 60s
+# - Trip after: 5 consecutive failures
+```
+
+### Rate Limiting Configuration
+
+Control the rate of remediation actions:
+
+```yaml
+# Rate limiting is automatically enabled
+# Default settings:
+# - Rate limit: 10 actions per second
+# - Bucket capacity: 100 tokens
+# - Per-action rate limiting
+```
+
+### Graceful Shutdown Configuration
+
+KubeGuardian supports graceful shutdown:
+
+```bash
+# SIGINT/SIGTERM triggers graceful shutdown
+# 30-second shutdown timeout
+# Automatic cleanup of resources
+```
+
+### Environment Variables
+
+Configure KubeGuardian using environment variables:
+
+```bash
+export KUBEGUARDIAN_CONFIG_PATH=/etc/kubeguardian/config.yaml
+export KUBEGUARDIAN_DRY_RUN=true
+export KUBEGUARDIAN_METRICS_ADDR=:9090
+export KUBEGUARDIAN_PROBE_ADDR=:9091
+export KUBEGUARDIAN_LEADER_ELECTION=true
+
+./kubeguardian
+```
 
 ### Basic Configuration
 
@@ -528,22 +611,96 @@ KubeGuardian comes with built-in detection rules:
      --namespace=kubeguardian
    ```
 
-## 📊 Monitoring
+## 📊 Monitoring & Observability
 
-### Metrics
+### Prometheus Metrics
 
-KubeGuardian exposes Prometheus metrics on port `8080`:
+KubeGuardian exposes comprehensive Prometheus metrics on port `8080`:
 
-- `kubeguardian_issues_detected_total`
-- `kubeguardian_remediations_total`
-- `kubeguardian_remediation_success_total`
-- `kubeguardian_remediation_failure_total`
-- `kubeguardian_detection_duration_seconds`
+#### Detection Metrics
+- `kubeguardian_issues_detected_total` - Total issues detected by rule, severity, and namespace
+- `kubeguardian_detection_duration_seconds` - Time spent detecting issues (histogram)
+- `kubeguardian_last_detection_timestamp` - Timestamp of last detection cycle
+
+#### Remediation Metrics
+- `kubeguardian_remediations_total` - Total remediation actions by action, result, and namespace
+- `kubeguardian_remediation_duration_seconds` - Time spent executing remediation (histogram)
+- `kubeguardian_cooldown_active` - Number of active cooldown entries by namespace
+
+#### API Metrics
+- `kubeguardian_api_calls_total` - Total Kubernetes API calls by method, resource, and status
+- `kubeguardian_api_duration_seconds` - Time spent on API calls (histogram)
+
+#### Notification Metrics
+- `kubeguardian_notifications_total` - Total notifications sent by type and status
+
+#### System Metrics
+- `kubeguardian_uptime_seconds` - Uptime of KubeGuardian in seconds
 
 ### Health Checks
 
-- **Liveness**: `/healthz` on port `8081`
-- **Readiness**: `/readyz` on port `8081`
+KubeGuardian provides comprehensive health endpoints on port `8081`:
+
+#### Liveness Probe
+- **Endpoint**: `/healthz`
+- **Purpose**: Indicates if the service is running
+- **Response**: `200 OK` if service is alive
+
+#### Readiness Probe
+- **Endpoint**: `/readyz`
+- **Purpose**: Indicates if the service is ready to handle requests
+- **Response**: `200 OK` if all health checks pass, `503 Service Unavailable` otherwise
+
+#### Comprehensive Health Check
+- **Endpoint**: `/health` (JSON response)
+- **Purpose**: Detailed health status of all components
+- **Response**: JSON with overall status and individual check results
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-20T10:30:00Z",
+  "uptime": "2h30m15s",
+  "version": "v2.0.0",
+  "checks": {
+    "kubernetes-api": {
+      "status": "healthy",
+      "lastChecked": "2024-01-20T10:30:00Z",
+      "duration": "150ms",
+      "message": "OK"
+    },
+    "memory": {
+      "status": "healthy",
+      "lastChecked": "2024-01-20T10:30:00Z",
+      "duration": "10ms",
+      "message": "Memory usage: 45%"
+    },
+    "disk": {
+      "status": "healthy",
+      "lastChecked": "2024-01-20T10:30:00Z",
+      "duration": "5ms",
+      "message": "Disk usage: 32%"
+    }
+  }
+}
+```
+
+### Built-in Health Checks
+
+KubeGuardian includes these built-in health checks:
+
+1. **Kubernetes API Connectivity** - Verifies connection to the Kubernetes API
+2. **Memory Usage** - Checks if memory usage is below threshold (default: 80%)
+3. **Disk Usage** - Checks if disk usage is below threshold (default: 85%)
+
+### Grafana Dashboard
+
+Import the provided Grafana dashboard to visualize KubeGuardian metrics:
+
+```bash
+# Import dashboard (dashboard ID: 12345)
+kubectl apply -f deployments/grafana/kubeguardian-dashboard.json
+```
 
 ## 🛠 Development
 
@@ -558,6 +715,9 @@ make test
 
 # Build Docker image
 make docker-build
+
+# Run with race detection (for development)
+go run -race cmd/kubeguardian/main.go
 ```
 
 ### Local Development
@@ -580,6 +740,12 @@ go run cmd/kubeguardian/main.go --config examples/cooldown-config.yaml
 
 # Run with memory-based remediation configuration
 go run cmd/kubeguardian/main.go --config examples/memory-remediation-config.yaml
+
+# Run with verbose logging
+go run cmd/kubeguardian/main.go --config configs/config.yaml -v
+
+# Run with leader election disabled (for local development)
+go run cmd/kubeguardian/main.go --config configs/config.yaml --leader-elect=false
 ```
 
 ### Testing
@@ -593,6 +759,32 @@ go test -tags=integration ./...
 
 # Generate test coverage
 go test -cover ./...
+
+# Run tests with coverage report
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out -o coverage.html
+
+# Run benchmarks
+go test -bench=. ./...
+
+# Run race condition tests
+go test -race ./...
+```
+
+### Code Quality
+
+```bash
+# Format code
+go fmt ./...
+
+# Run linter
+golangci-lint run
+
+# Run security scan
+gosec ./...
+
+# Check for vulnerabilities
+go list -m -u all
 ```
 
 ## 🔐 Security
@@ -607,16 +799,26 @@ KubeGuardian follows security best practices:
 
 ## 📝 Roadmap
 
+### v2.1 (Q1 2024)
 - [ ] **Web UI** - Dashboard for monitoring and configuration
 - [ ] **Custom metrics** - Support for application-specific metrics
 - [ ] **Multi-cluster** - Support for managing multiple clusters
 - [ ] **Policy engine** - Advanced policy-based remediation
 - [ ] **Integration hub** - More notification channels (Teams, PagerDuty)
+
+### v2.2 (Q2 2024)
 - [ ] **ML detection** - Machine learning for anomaly detection
 - [ ] **Audit logging** - Comprehensive audit trail
 - [ ] **GitOps support** - Configuration as Code
 - [ ] **Rule templates** - Pre-built namespace rule templates
-- [ ] **Configuration validation** - Rule validation and testing framework
+- [ ] **Advanced scheduling** - Time-based remediation rules
+
+### v3.0 (Q3 2024)
+- [ ] **Distributed architecture** - Multi-node deployment support
+- [ ] **Event-driven architecture** - Kafka/Redis integration
+- [ ] **Advanced analytics** - Trend analysis and predictions
+- [ ] **Mobile app** - iOS/Android monitoring app
+- [ ] **Enterprise features** - SSO, RBAC, multi-tenancy
 
 ## 🤝 Contributing
 

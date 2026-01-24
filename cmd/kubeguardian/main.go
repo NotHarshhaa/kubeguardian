@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"flag"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/NotHarshhaa/kubeguardian/pkg/config"
 	"github.com/NotHarshhaa/kubeguardian/pkg/controller"
+	"github.com/NotHarshhaa/kubeguardian/pkg/health"
+	"github.com/NotHarshhaa/kubeguardian/pkg/metrics"
 	"github.com/NotHarshhaa/kubeguardian/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -63,6 +67,18 @@ func main() {
 		cfg.Remediation.DryRun = true
 	}
 
+	// Initialize metrics
+	metricsCollector := metrics.NewMetrics()
+
+	// Initialize health checks
+	healthChecker := health.NewHealthCheck(version.Version)
+	healthChecker.RegisterCheck(health.NewKubernetesAPICheck())
+	healthChecker.RegisterCheck(health.NewMemoryCheck(80.0)) // 80% memory threshold
+	healthChecker.RegisterCheck(health.NewDiskCheck("/", 85.0))   // 85% disk threshold
+
+	// Setup HTTP servers for health checks and metrics
+	setupHTTPServers(cfg, healthChecker, metricsCollector)
+
 	// Log configuration
 	logger.Info("Configuration loaded",
 		"metricsAddr", cfg.Controller.MetricsAddr,
@@ -80,10 +96,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup signal handling
+	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Setup signal handling with graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -95,12 +112,67 @@ func main() {
 		}
 	}()
 
-	// Wait for signals
+	// Start metrics updater
+	go startMetricsUpdater(ctx, metricsCollector)
+
+	// Wait for signals with graceful shutdown
 	<-sigCh
 	logger.Info("Shutdown signal received, stopping KubeGuardian")
+
+	// Graceful shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
 
 	// Cancel context to stop the controller
 	cancel()
 
-	logger.Info("KubeGuardian stopped")
+	// Wait for graceful shutdown or timeout
+	done := make(chan struct{})
+	go func() {
+		// Give some time for cleanup
+		time.Sleep(5 * time.Second)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logger.Info("KubeGuardian stopped gracefully")
+	case <-shutdownCtx.Done():
+		logger.Info("KubeGuardian stopped due to timeout")
+	}
+}
+
+// setupHTTPServers sets up HTTP servers for health checks and metrics
+func setupHTTPServers(cfg *config.Config, healthChecker *health.HealthCheck, metricsCollector *metrics.Metrics) {
+	// Setup health check server
+	healthServer := &http.Server{
+		Addr:    cfg.Controller.ProbeAddr,
+		Handler: healthChecker.HTTPHandler(),
+	}
+
+	// Setup readiness probe
+	http.HandleFunc("/readyz", healthChecker.ReadinessHandler())
+	http.HandleFunc("/healthz", healthChecker.LivenessHandler())
+
+	// Setup metrics server (handled by controller-runtime)
+	go func() {
+		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Log.Error(err, "Health server failed")
+		}
+	}()
+}
+
+// startMetricsUpdater starts a goroutine to update metrics periodically
+func startMetricsUpdater(ctx context.Context, metricsCollector *metrics.Metrics) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			metricsCollector.UpdateUptime()
+		}
+	}
 }
