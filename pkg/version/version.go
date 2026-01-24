@@ -2,7 +2,7 @@ package version
 
 var (
 	// Version is the version of KubeGuardian
-	Version = "v1.0.0"
+	Version = "v1.5.0"
 	// GitCommit is the git commit hash
 	GitCommit = "unknown"
 	// BuildDate is the build date

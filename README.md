@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.0.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-v1.5.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License">
   <img src="https://img.shields.io/badge/kubernetes-1.20+-blue.svg" alt="Kubernetes Version">
   <img src="https://img.shields.io/badge/go-1.21+-blue.svg" alt="Go Version">
@@ -100,7 +100,7 @@ image: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
 - **Cost Optimization**: Leverage cheaper ARM64 instances where available
 - **Performance**: Optimized for modern ARM64 and x86_64 architectures
 
-## ✨ Features (v2.0 - Enterprise Edition)
+## ✨ Features (v1.5.0 - Enhanced Edition)
 
 - 🚑 **CrashLoopBackOff auto-restart**
 - 🔄 **Deployment auto-rollback**
@@ -661,7 +661,7 @@ KubeGuardian provides comprehensive health endpoints on port `8081`:
   "status": "healthy",
   "timestamp": "2024-01-20T10:30:00Z",
   "uptime": "2h30m15s",
-  "version": "v2.0.0",
+  "version": "v1.5.0",
   "checks": {
     "kubernetes-api": {
       "status": "healthy",
@@ -799,21 +799,21 @@ KubeGuardian follows security best practices:
 
 ## 📝 Roadmap
 
-### v2.1 (Q1 2024)
+### v1.6 (Q1 2024)
 - [ ] **Web UI** - Dashboard for monitoring and configuration
 - [ ] **Custom metrics** - Support for application-specific metrics
 - [ ] **Multi-cluster** - Support for managing multiple clusters
 - [ ] **Policy engine** - Advanced policy-based remediation
 - [ ] **Integration hub** - More notification channels (Teams, PagerDuty)
 
-### v2.2 (Q2 2024)
+### v1.7 (Q2 2024)
 - [ ] **ML detection** - Machine learning for anomaly detection
 - [ ] **Audit logging** - Comprehensive audit trail
 - [ ] **GitOps support** - Configuration as Code
 - [ ] **Rule templates** - Pre-built namespace rule templates
 - [ ] **Advanced scheduling** - Time-based remediation rules
 
-### v3.0 (Q3 2024)
+### v2.0 (Q3 2024)
 - [ ] **Distributed architecture** - Multi-node deployment support
 - [ ] **Event-driven architecture** - Kafka/Redis integration
 - [ ] **Advanced analytics** - Trend analysis and predictions
