@@ -288,13 +288,14 @@ type NamespaceRemediationConfig struct {
 
 // RemediationConfig contains remediation engine settings
 type RemediationConfig struct {
-	Enabled             bool          `yaml:"enabled"`
-	MaxRetries          int           `yaml:"maxRetries"`
-	RetryInterval       time.Duration `yaml:"retryInterval"`
-	DryRun              bool          `yaml:"dryRun"`
-	AutoRollbackEnabled bool          `yaml:"autoRollbackEnabled"`
-	AutoScaleEnabled    bool          `yaml:"autoScaleEnabled"`
-	CooldownSeconds     int           `yaml:"cooldownSeconds"`
+	Enabled             bool                                  `yaml:"enabled"`
+	MaxRetries          int                                   `yaml:"maxRetries"`
+	RetryInterval       time.Duration                         `yaml:"retryInterval"`
+	DryRun              bool                                  `yaml:"dryRun"`
+	AutoRollbackEnabled bool                                  `yaml:"autoRollbackEnabled"`
+	AutoScaleEnabled    bool                                  `yaml:"autoScaleEnabled"`
+	CooldownSeconds     int                                   `yaml:"cooldownSeconds"`
+	Namespaces          map[string]NamespaceRemediationConfig `yaml:"namespaces"`
 }
 
 // NotificationConfig contains notification settings

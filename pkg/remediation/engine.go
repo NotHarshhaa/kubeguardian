@@ -11,13 +11,20 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/NotHarshhaa/kubeguardian/pkg/circuitbreaker"
+	"github.com/NotHarshhaa/kubeguardian/pkg/metrics"
+	"github.com/NotHarshhaa/kubeguardian/pkg/ratelimit"
 )
 
 // Engine represents the remediation engine
 type Engine struct {
-	client    kubernetes.Interface
-	config    RemediationConfig
-	cooldowns map[string]CooldownEntry // Key: "namespace:resource:action"
+	client        kubernetes.Interface
+	config        RemediationConfig
+	cooldowns     map[string]CooldownEntry // Key: "namespace:resource:action"
+	circuitBreaker map[string]*circuitbreaker.CircuitBreaker
+	rateLimiter   *ratelimit.ActionRateLimiter
+	metrics       *metrics.Metrics
 }
 
 // RemediationConfig contains remediation configuration
@@ -70,10 +77,33 @@ type CooldownEntry struct {
 
 // NewEngine creates a new remediation engine
 func NewEngine(client kubernetes.Interface, config RemediationConfig) *Engine {
+	// Create circuit breakers for different API operations
+	circuitBreakers := make(map[string]*circuitbreaker.CircuitBreaker)
+	circuitBreakers["pods"] = circuitbreaker.NewCircuitBreaker("pods-api", circuitbreaker.Config{
+		MaxRequests: 5,
+		Interval:    60 * time.Second,
+		Timeout:     30 * time.Second,
+	})
+	circuitBreakers["deployments"] = circuitbreaker.NewCircuitBreaker("deployments-api", circuitbreaker.Config{
+		MaxRequests: 3,
+		Interval:    60 * time.Second,
+		Timeout:     30 * time.Second,
+	})
+	circuitBreakers["replicasets"] = circuitbreaker.NewCircuitBreaker("replicasets-api", circuitbreaker.Config{
+		MaxRequests: 3,
+		Interval:    60 * time.Second,
+		Timeout:     30 * time.Second,
+	})
+
+	// Create rate limiter
+	rateLimiter := ratelimit.NewActionRateLimiter(10, 100) // 10 actions/sec, 100 bucket capacity
+
 	return &Engine{
-		client:    client,
-		config:    config,
-		cooldowns: make(map[string]CooldownEntry),
+		client:         client,
+		config:         config,
+		cooldowns:      make(map[string]CooldownEntry),
+		circuitBreaker: circuitBreakers,
+		rateLimiter:    rateLimiter,
 	}
 }
 

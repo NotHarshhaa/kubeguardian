@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Status represents health check status
@@ -50,16 +53,25 @@ type HealthCheck struct {
 	results  map[string]Check
 	startTime time.Time
 	version  string
+	client   kubernetes.Interface
 }
 
 // NewHealthCheck creates a new health check manager
-func NewHealthCheck(version string) *HealthCheck {
-	return &HealthCheck{
+func NewHealthCheck(version string, client kubernetes.Interface) *HealthCheck {
+	hc := &HealthCheck{
 		checks:   make(map[string]Checker),
 		results:  make(map[string]Check),
 		startTime: time.Now(),
 		version:  version,
+		client:   client,
 	}
+
+	// Register built-in checks
+	hc.RegisterCheck(NewKubernetesAPICheck(client))
+	hc.RegisterCheck(NewMemoryCheck(80.0)) // 80% memory threshold
+	hc.RegisterCheck(NewDiskCheck("/", 85.0))   // 85% disk threshold
+
+	return hc
 }
 
 // RegisterCheck registers a health check
@@ -183,12 +195,14 @@ func (h *HealthCheck) LivenessHandler() http.HandlerFunc {
 
 // KubernetesAPICheck checks connectivity to Kubernetes API
 type KubernetesAPICheck struct {
-	name string
+	name   string
+	client kubernetes.Interface
 }
 
-func NewKubernetesAPICheck() *KubernetesAPICheck {
+func NewKubernetesAPICheck(client kubernetes.Interface) *KubernetesAPICheck {
 	return &KubernetesAPICheck{
-		name: "kubernetes-api",
+		name:   "kubernetes-api",
+		client: client,
 	}
 }
 
@@ -197,14 +211,9 @@ func (k *KubernetesAPICheck) Name() string {
 }
 
 func (k *KubernetesAPICheck) Check(ctx context.Context) error {
-	// In a real implementation, you'd check actual API connectivity
-	// For now, just simulate the check
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		return nil
-	}
+	// Test API connectivity by listing namespaces
+	_, err := k.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 1})
+	return err
 }
 
 // MemoryCheck checks memory usage

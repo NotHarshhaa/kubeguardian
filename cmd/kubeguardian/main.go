@@ -70,11 +70,15 @@ func main() {
 	// Initialize metrics
 	metricsCollector := metrics.NewMetrics()
 
+	// Create controller
+	ctrl, err := controller.NewController(cfg, metricsCollector)
+	if err != nil {
+		logger.Error(err, "Failed to create controller")
+		os.Exit(1)
+	}
+
 	// Initialize health checks
-	healthChecker := health.NewHealthCheck(version.Version)
-	healthChecker.RegisterCheck(health.NewKubernetesAPICheck())
-	healthChecker.RegisterCheck(health.NewMemoryCheck(80.0)) // 80% memory threshold
-	healthChecker.RegisterCheck(health.NewDiskCheck("/", 85.0))   // 85% disk threshold
+	healthChecker := health.NewHealthCheck(version.Version, ctrl.GetClient())
 
 	// Setup HTTP servers for health checks and metrics
 	setupHTTPServers(cfg, healthChecker, metricsCollector)
@@ -89,20 +93,13 @@ func main() {
 		"dryRun", cfg.Remediation.DryRun,
 	)
 
-	// Create controller
-	ctrl, err := controller.NewController(cfg)
-	if err != nil {
-		logger.Error(err, "Failed to create controller")
-		os.Exit(1)
-	}
+	// Setup signal handling with graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	// Setup signal handling with graceful shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start the controller in a goroutine
 	go func() {
