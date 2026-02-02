@@ -7,9 +7,9 @@ import (
 
 // RateLimiter implements a token bucket rate limiter
 type RateLimiter struct {
-	mu       sync.Mutex
-	tokens   int
-	capacity int
+	mu         sync.Mutex
+	tokens     int
+	capacity   int
 	refillRate int // tokens per second
 	lastRefill time.Time
 }
@@ -17,8 +17,8 @@ type RateLimiter struct {
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter(capacity, refillRate int) *RateLimiter {
 	return &RateLimiter{
-		tokens:    capacity,
-		capacity:  capacity,
+		tokens:     capacity,
+		capacity:   capacity,
 		refillRate: refillRate,
 		lastRefill: time.Now(),
 	}
@@ -30,12 +30,12 @@ func (rl *RateLimiter) Allow() bool {
 	defer rl.mu.Unlock()
 
 	rl.refill()
-	
+
 	if rl.tokens > 0 {
 		rl.tokens--
 		return true
 	}
-	
+
 	return false
 }
 
@@ -44,7 +44,7 @@ func (rl *RateLimiter) refill() {
 	now := time.Now()
 	elapsed := now.Sub(rl.lastRefill)
 	tokensToAdd := int(elapsed.Seconds() * float64(rl.refillRate))
-	
+
 	if tokensToAdd > 0 {
 		rl.tokens += tokensToAdd
 		if rl.tokens > rl.capacity {
@@ -94,7 +94,7 @@ func (arl *ActionRateLimiter) Allow(action string) bool {
 func (arl *ActionRateLimiter) SetRate(action string, rate, capacity int) {
 	arl.mu.Lock()
 	defer arl.mu.Unlock()
-	
+
 	arl.limiter[action] = NewRateLimiter(capacity, rate)
 }
 
@@ -102,7 +102,7 @@ func (arl *ActionRateLimiter) SetRate(action string, rate, capacity int) {
 func (arl *ActionRateLimiter) GetStats(action string) (tokens, capacity int) {
 	arl.mu.RLock()
 	defer arl.mu.RUnlock()
-	
+
 	if limiter, exists := arl.limiter[action]; exists {
 		limiter.mu.Lock()
 		tokens = limiter.tokens
@@ -110,6 +110,6 @@ func (arl *ActionRateLimiter) GetStats(action string) (tokens, capacity int) {
 		limiter.mu.Unlock()
 		return
 	}
-	
+
 	return arl.defaultCap, arl.defaultCap
 }

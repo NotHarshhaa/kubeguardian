@@ -24,8 +24,8 @@ var (
 	probeAddr      = flag.String("health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	leaderElection = flag.Bool("leader-elect", false, "Enable leader election for controller manager. "+
 		"Enabling this will ensure there is only one active controller manager.")
-	dryRunMode     = flag.Bool("dry-run", false, "Enable dry-run mode to simulate remediation actions without making changes")
-	zapOpts = zap.Options{
+	dryRunMode = flag.Bool("dry-run", false, "Enable dry-run mode to simulate remediation actions without making changes")
+	zapOpts    = zap.Options{
 		Development: true,
 	}
 )
@@ -61,7 +61,7 @@ func main() {
 		cfg.Controller.ProbeAddr = *probeAddr
 	}
 	cfg.Controller.LeaderElection = *leaderElection
-	
+
 	// Override dry-run mode if specified via command line
 	if *dryRunMode {
 		cfg.Remediation.DryRun = true

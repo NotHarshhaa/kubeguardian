@@ -16,24 +16,24 @@ func TestConfigValidation(t *testing.T) {
 			name: "valid config",
 			config: &Config{
 				Controller: ControllerConfig{
-					MetricsAddr: ":8080",
-					ProbeAddr:   ":8081",
+					MetricsAddr:             ":8080",
+					ProbeAddr:               ":8081",
 					MaxConcurrentReconciles: 1,
-					SyncPeriod: 30 * time.Second,
+					SyncPeriod:              30 * time.Second,
 				},
 				Detection: DetectionConfig{
-					EvaluationInterval: 30 * time.Second,
-					CPUThresholdPercent: 80.0,
-					MemoryThresholdPercent: 85.0,
+					EvaluationInterval:        30 * time.Second,
+					CPUThresholdPercent:       80.0,
+					MemoryThresholdPercent:    85.0,
 					CrashLoopThreshold:        3,
 					FailedDeploymentThreshold: 5,
 					OOMKillThreshold:          2,
 				},
 				Remediation: RemediationConfig{
-					Enabled:     true,
-					MaxRetries:  3,
-					DryRun:      false,
-					RetryInterval: 30 * time.Second,
+					Enabled:         true,
+					MaxRetries:      3,
+					DryRun:          false,
+					RetryInterval:   30 * time.Second,
 					CooldownSeconds: 300,
 				},
 			},
@@ -44,24 +44,24 @@ func TestConfigValidation(t *testing.T) {
 			name: "invalid evaluation interval",
 			config: &Config{
 				Controller: ControllerConfig{
-					MetricsAddr: ":8080",
-					ProbeAddr:   ":8081",
+					MetricsAddr:             ":8080",
+					ProbeAddr:               ":8081",
 					MaxConcurrentReconciles: 1,
-					SyncPeriod: 30 * time.Second,
+					SyncPeriod:              30 * time.Second,
 				},
 				Detection: DetectionConfig{
-					EvaluationInterval: 100 * time.Millisecond, // Too short
-					CPUThresholdPercent: 80.0,
-					MemoryThresholdPercent: 85.0,
+					EvaluationInterval:        100 * time.Millisecond, // Too short
+					CPUThresholdPercent:       80.0,
+					MemoryThresholdPercent:    85.0,
 					CrashLoopThreshold:        3,
 					FailedDeploymentThreshold: 5,
 					OOMKillThreshold:          2,
 				},
 				Remediation: RemediationConfig{
-					Enabled:     true,
-					MaxRetries:  3,
-					DryRun:      false,
-					RetryInterval: 30 * time.Second,
+					Enabled:         true,
+					MaxRetries:      3,
+					DryRun:          false,
+					RetryInterval:   30 * time.Second,
 					CooldownSeconds: 300,
 				},
 			},
@@ -72,24 +72,24 @@ func TestConfigValidation(t *testing.T) {
 			name: "invalid CPU threshold",
 			config: &Config{
 				Controller: ControllerConfig{
-					MetricsAddr: ":8080",
-					ProbeAddr:   ":8081",
+					MetricsAddr:             ":8080",
+					ProbeAddr:               ":8081",
 					MaxConcurrentReconciles: 1,
-					SyncPeriod: 30 * time.Second,
+					SyncPeriod:              30 * time.Second,
 				},
 				Detection: DetectionConfig{
-					EvaluationInterval: 30 * time.Second,
-					CPUThresholdPercent: 150.0, // Invalid (> 100)
-					MemoryThresholdPercent: 85.0,
+					EvaluationInterval:        30 * time.Second,
+					CPUThresholdPercent:       150.0, // Invalid (> 100)
+					MemoryThresholdPercent:    85.0,
 					CrashLoopThreshold:        3,
 					FailedDeploymentThreshold: 5,
 					OOMKillThreshold:          2,
 				},
 				Remediation: RemediationConfig{
-					Enabled:     true,
-					MaxRetries:  3,
-					DryRun:      false,
-					RetryInterval: 30 * time.Second,
+					Enabled:         true,
+					MaxRetries:      3,
+					DryRun:          false,
+					RetryInterval:   30 * time.Second,
 					CooldownSeconds: 300,
 				},
 			},
@@ -100,23 +100,23 @@ func TestConfigValidation(t *testing.T) {
 			name: "negative max retries",
 			config: &Config{
 				Controller: ControllerConfig{
-					MetricsAddr: ":8080",
-					ProbeAddr:   ":8081",
+					MetricsAddr:             ":8080",
+					ProbeAddr:               ":8081",
 					MaxConcurrentReconciles: 1,
-					SyncPeriod: 30 * time.Second,
+					SyncPeriod:              30 * time.Second,
 				},
 				Detection: DetectionConfig{
-					EvaluationInterval: 30 * time.Second,
-					CPUThresholdPercent: 80.0,
-					MemoryThresholdPercent: 85.0,
+					EvaluationInterval:        30 * time.Second,
+					CPUThresholdPercent:       80.0,
+					MemoryThresholdPercent:    85.0,
 					CrashLoopThreshold:        3,
 					FailedDeploymentThreshold: 5,
 					OOMKillThreshold:          2,
 				},
 				Remediation: RemediationConfig{
-					MaxRetries: -1, // Invalid
-					DryRun:      false,
-					RetryInterval: 30 * time.Second,
+					MaxRetries:      -1, // Invalid
+					DryRun:          false,
+					RetryInterval:   30 * time.Second,
 					CooldownSeconds: 300,
 				},
 			},
@@ -127,15 +127,15 @@ func TestConfigValidation(t *testing.T) {
 			name: "config with warnings",
 			config: &Config{
 				Controller: ControllerConfig{
-					MetricsAddr: ":8080",
-					ProbeAddr:   ":8081",
+					MetricsAddr:             ":8080",
+					ProbeAddr:               ":8081",
 					MaxConcurrentReconciles: 1,
-					SyncPeriod: 500 * time.Millisecond, // Warning threshold
+					SyncPeriod:              500 * time.Millisecond, // Warning threshold
 				},
 				Detection: DetectionConfig{
-					EvaluationInterval: 30 * time.Second,
-					CPUThresholdPercent: 80.0,
-					MemoryThresholdPercent: 85.0,
+					EvaluationInterval:        30 * time.Second,
+					CPUThresholdPercent:       80.0,
+					MemoryThresholdPercent:    85.0,
 					CrashLoopThreshold:        3,
 					FailedDeploymentThreshold: 5,
 					OOMKillThreshold:          2,
@@ -148,10 +148,10 @@ func TestConfigValidation(t *testing.T) {
 					},
 				},
 				Remediation: RemediationConfig{
-					Enabled:     true,
-					MaxRetries:  3,
-					DryRun:      false,
-					RetryInterval: 30 * time.Second,
+					Enabled:         true,
+					MaxRetries:      3,
+					DryRun:          false,
+					RetryInterval:   30 * time.Second,
 					CooldownSeconds: 300,
 				},
 			},
@@ -163,7 +163,7 @@ func TestConfigValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.config.Validate()
-			
+
 			if tt.wantErr && len(result.Errors) == 0 {
 				t.Errorf("expected validation errors but got none")
 			}
@@ -234,13 +234,13 @@ func TestSlackChannelValidation(t *testing.T) {
 
 func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
-	
+
 	// Test that default config is valid
 	result := config.Validate()
 	if len(result.Errors) > 0 {
 		t.Errorf("default config should be valid but has errors: %v", result.Errors)
 	}
-	
+
 	// Test default values
 	if config.Detection.EvaluationInterval != 30*time.Second {
 		t.Errorf("default evaluation interval = %v, want %v", config.Detection.EvaluationInterval, 30*time.Second)

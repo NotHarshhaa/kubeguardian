@@ -50,7 +50,7 @@ func NewController(cfg *config.Config, metricsCollector *metrics.Metrics) (*Cont
 		CPUThresholdPercent:       cfg.Detection.CPUThresholdPercent,
 		MemoryThresholdPercent:    cfg.Detection.MemoryThresholdPercent,
 		OOMKillThreshold:          cfg.Detection.OOMKillThreshold,
-		Namespaces:                 convertConfigNamespaces(cfg.Detection.Namespaces),
+		Namespaces:                convertConfigNamespaces(cfg.Detection.Namespaces),
 	}
 	detector := detection.NewDetector(client, detectionConfig)
 	if err := detector.LoadRules(); err != nil {

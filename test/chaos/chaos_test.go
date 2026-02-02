@@ -190,7 +190,7 @@ func testResourceExhaustion(t *testing.T, client *fake.Clientset) {
 	duration := time.Since(start)
 
 	t.Logf("Controller processed 1000 resources in %v", duration)
-	
+
 	if duration > 5*time.Second {
 		t.Errorf("Controller took too long to process resources: %v", duration)
 	}
@@ -263,7 +263,7 @@ func testMemoryPressure(t *testing.T, client *fake.Clientset) {
 				Name:      fmt.Sprintf("memory-test-pod-%d", i),
 				Namespace: "default",
 				Labels: map[string]string{
-					"app": "memory-test",
+					"app":   "memory-test",
 					"index": fmt.Sprintf("%d", i),
 				},
 			},
@@ -329,7 +329,7 @@ func testHighLoad(t *testing.T, client *fake.Clientset) {
 	duration := time.Since(start)
 
 	t.Logf("Controller handled high load for %v", duration)
-	
+
 	// Controller should handle high load without crashing
 	if err != nil && err != context.DeadlineExceeded {
 		t.Errorf("Controller failed under high load: %v", err)

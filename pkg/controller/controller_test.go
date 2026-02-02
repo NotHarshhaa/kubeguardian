@@ -31,8 +31,8 @@ func TestNewController(t *testing.T) {
 	// Create test configuration
 	cfg := &config.Config{
 		Detection: config.DetectionConfig{
-			EvaluationInterval: 30 * time.Second,
-			CPUThresholdPercent: 80.0,
+			EvaluationInterval:     30 * time.Second,
+			CPUThresholdPercent:    80.0,
 			MemoryThresholdPercent: 85.0,
 		},
 		Remediation: config.RemediationConfig{
@@ -52,7 +52,7 @@ func TestNewController(t *testing.T) {
 
 	// Test controller creation
 	ctrl, err := NewController(cfg, metricsCollector)
-	
+
 	assert.NoError(t, err)
 	assert.NotNil(t, ctrl)
 	assert.NotNil(t, ctrl.client)
@@ -92,7 +92,7 @@ func TestControllerRun(t *testing.T) {
 	cfg := &config.Config{
 		Detection: config.DetectionConfig{
 			EvaluationInterval: 100 * time.Millisecond, // Short for testing
-			RulesFile:         "testdata/rules.yaml",
+			RulesFile:          "testdata/rules.yaml",
 		},
 		Remediation: config.RemediationConfig{
 			Enabled: true,
@@ -169,7 +169,7 @@ func TestControllerProcessIssue(t *testing.T) {
 
 func TestControllerGetClient(t *testing.T) {
 	client := NewMockKubernetesClient()
-	
+
 	cfg := &config.Config{
 		Detection: config.DetectionConfig{
 			EvaluationInterval: 30 * time.Second,
@@ -207,9 +207,9 @@ func TestControllerConfigurationConversion(t *testing.T) {
 	}
 
 	detectionNamespaces := convertConfigNamespaces(configNamespaces)
-	
+
 	assert.Equal(t, 1, len(detectionNamespaces))
-	
+
 	nsConfig, exists := detectionNamespaces["default"]
 	assert.True(t, exists)
 	assert.Equal(t, 5, nsConfig.CrashLoop.RestartLimit)
@@ -226,9 +226,9 @@ func TestControllerConfigurationConversion(t *testing.T) {
 	}
 
 	convertedRemediation := convertRemediationNamespaces(remediationNamespaces)
-	
+
 	assert.Equal(t, 1, len(convertedRemediation))
-	
+
 	remConfig, exists := convertedRemediation["default"]
 	assert.True(t, exists)
 	assert.True(t, remConfig.AutoRollbackEnabled)
@@ -245,7 +245,7 @@ func TestControllerErrorHandling(t *testing.T) {
 
 	metricsCollector := metrics.NewMetrics()
 	ctrl, err := NewController(invalidCfg, metricsCollector)
-	
+
 	// Should fail due to missing rules file
 	assert.Error(t, err)
 	assert.Nil(t, ctrl)
@@ -264,7 +264,7 @@ func TestControllerMetricsIntegration(t *testing.T) {
 	cfg := &config.Config{
 		Detection: config.DetectionConfig{
 			EvaluationInterval: 50 * time.Millisecond,
-			RulesFile:         "testdata/rules.yaml",
+			RulesFile:          "testdata/rules.yaml",
 		},
 		Remediation: config.RemediationConfig{
 			Enabled: true,
@@ -311,7 +311,7 @@ func TestControllerGracefulShutdown(t *testing.T) {
 
 	// Test graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Start controller in goroutine
 	done := make(chan error, 1)
 	go func() {
@@ -320,7 +320,7 @@ func TestControllerGracefulShutdown(t *testing.T) {
 
 	// Let it run briefly
 	time.Sleep(50 * time.Millisecond)
-	
+
 	// Cancel context to trigger shutdown
 	cancel()
 

@@ -19,12 +19,12 @@ import (
 
 // Engine represents the remediation engine
 type Engine struct {
-	client        kubernetes.Interface
-	config        RemediationConfig
-	cooldowns     map[string]CooldownEntry // Key: "namespace:resource:action"
+	client         kubernetes.Interface
+	config         RemediationConfig
+	cooldowns      map[string]CooldownEntry // Key: "namespace:resource:action"
 	circuitBreaker map[string]*circuitbreaker.CircuitBreaker
-	rateLimiter   *ratelimit.ActionRateLimiter
-	metrics       *metrics.Metrics
+	rateLimiter    *ratelimit.ActionRateLimiter
+	metrics        *metrics.Metrics
 }
 
 // RemediationConfig contains remediation configuration

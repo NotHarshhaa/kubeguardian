@@ -412,7 +412,7 @@ func (d *Detector) detectHighCPUUsage(ctx context.Context, rule Rule) ([]Issue, 
 			if restartThreshold < 1 {
 				restartThreshold = 1
 			}
-			
+
 			if containerStatus.RestartCount >= restartThreshold {
 				// Check if the condition has been met for the required duration
 				if d.meetsDurationCondition(containerStatus.LastTerminationState.Terminated, &metav1.Duration{Duration: nsConfig.CPU.CheckDuration}) {

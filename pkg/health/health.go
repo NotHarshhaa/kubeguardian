@@ -22,22 +22,22 @@ const (
 
 // Check represents a health check
 type Check struct {
-	Name         string            `json:"name"`
-	Status       Status            `json:"status"`
-	Message      string            `json:"message,omitempty"`
-	LastChecked  time.Time         `json:"lastChecked"`
-	Duration     time.Duration     `json:"duration"`
-	Tags         []string          `json:"tags,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	Name        string            `json:"name"`
+	Status      Status            `json:"status"`
+	Message     string            `json:"message,omitempty"`
+	LastChecked time.Time         `json:"lastChecked"`
+	Duration    time.Duration     `json:"duration"`
+	Tags        []string          `json:"tags,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
 // HealthResponse represents the overall health response
 type HealthResponse struct {
-	Status    Status            `json:"status"`
-	Timestamp time.Time         `json:"timestamp"`
-	Checks    map[string]Check  `json:"checks"`
-	Uptime    time.Duration     `json:"uptime"`
-	Version   string            `json:"version"`
+	Status    Status           `json:"status"`
+	Timestamp time.Time        `json:"timestamp"`
+	Checks    map[string]Check `json:"checks"`
+	Uptime    time.Duration    `json:"uptime"`
+	Version   string           `json:"version"`
 }
 
 // Checker interface for health checks
@@ -48,28 +48,28 @@ type Checker interface {
 
 // HealthCheck manages health checks
 type HealthCheck struct {
-	mu       sync.RWMutex
-	checks   map[string]Checker
-	results  map[string]Check
+	mu        sync.RWMutex
+	checks    map[string]Checker
+	results   map[string]Check
 	startTime time.Time
-	version  string
-	client   kubernetes.Interface
+	version   string
+	client    kubernetes.Interface
 }
 
 // NewHealthCheck creates a new health check manager
 func NewHealthCheck(version string, client kubernetes.Interface) *HealthCheck {
 	hc := &HealthCheck{
-		checks:   make(map[string]Checker),
-		results:  make(map[string]Check),
+		checks:    make(map[string]Checker),
+		results:   make(map[string]Check),
 		startTime: time.Now(),
-		version:  version,
-		client:   client,
+		version:   version,
+		client:    client,
 	}
 
 	// Register built-in checks
 	hc.RegisterCheck(NewKubernetesAPICheck(client))
-	hc.RegisterCheck(NewMemoryCheck(80.0)) // 80% memory threshold
-	hc.RegisterCheck(NewDiskCheck("/", 85.0))   // 85% disk threshold
+	hc.RegisterCheck(NewMemoryCheck(80.0))    // 80% memory threshold
+	hc.RegisterCheck(NewDiskCheck("/", 85.0)) // 85% disk threshold
 
 	return hc
 }
@@ -78,7 +78,7 @@ func NewHealthCheck(version string, client kubernetes.Interface) *HealthCheck {
 func (h *HealthCheck) RegisterCheck(checker Checker) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	
+
 	h.checks[checker.Name()] = checker
 }
 
@@ -89,16 +89,16 @@ func (h *HealthCheck) RunChecks(ctx context.Context) {
 
 	for name, checker := range h.checks {
 		start := time.Now()
-		
+
 		result := Check{
 			Name:        name,
 			LastChecked: start,
 			Duration:    0,
 		}
-		
+
 		err := checker.Check(ctx)
 		result.Duration = time.Since(start)
-		
+
 		if err != nil {
 			result.Status = StatusUnhealthy
 			result.Message = err.Error()
@@ -106,7 +106,7 @@ func (h *HealthCheck) RunChecks(ctx context.Context) {
 			result.Status = StatusHealthy
 			result.Message = "OK"
 		}
-		
+
 		h.results[name] = result
 	}
 }
@@ -147,13 +147,13 @@ func (h *HealthCheck) HTTPHandler() http.HandlerFunc {
 		// Run checks on demand
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		
+
 		h.RunChecks(ctx)
-		
+
 		health := h.GetHealth()
-		
+
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		switch health.Status {
 		case StatusHealthy:
 			w.WriteHeader(http.StatusOK)
@@ -162,7 +162,7 @@ func (h *HealthCheck) HTTPHandler() http.HandlerFunc {
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
-		
+
 		json.NewEncoder(w).Encode(health)
 	}
 }
@@ -171,7 +171,7 @@ func (h *HealthCheck) HTTPHandler() http.HandlerFunc {
 func (h *HealthCheck) ReadinessHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		health := h.GetHealth()
-		
+
 		if health.Status == StatusHealthy {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OK"))

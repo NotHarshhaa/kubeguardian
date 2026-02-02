@@ -11,8 +11,8 @@ import (
 
 // ValidationResult represents a configuration validation result
 type ValidationResult struct {
-	Valid  bool     `json:"valid"`
-	Errors []string `json:"errors"`
+	Valid    bool     `json:"valid"`
+	Errors   []string `json:"errors"`
 	Warnings []string `json:"warnings"`
 }
 
@@ -143,64 +143,74 @@ func (c *Config) validateNotification(result *ValidationResult) {
 
 func (c *Config) validateNamespaces(result *ValidationResult) {
 	for namespace, nsConfig := range c.Detection.Namespaces {
-		// Validate namespace name
 		if !isValidNamespaceName(namespace) {
 			result.Errors = append(result.Errors, fmt.Sprintf("invalid namespace name '%s'", namespace))
 			continue
 		}
 
-		// Validate crash loop config
-		if nsConfig.CrashLoop.RestartLimit < 1 {
-			result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': crash loop restart limit must be at least 1", namespace))
-		}
+		c.validateNamespaceCrashLoopConfig(namespace, nsConfig.CrashLoop, result)
+		c.validateNamespaceDeploymentConfig(namespace, nsConfig.Deployment, result)
+		c.validateNamespaceCPUConfig(namespace, nsConfig.CPU, result)
+		c.validateNamespaceMemoryConfig(namespace, nsConfig.Memory, result)
+		c.validateNamespaceRemediationConfig(namespace, nsConfig.Remediation, result)
+	}
+}
 
-		if nsConfig.CrashLoop.CheckDuration < time.Second {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': crash loop check duration less than 1 second may cause high CPU usage", namespace))
-		}
+func (c *Config) validateNamespaceCrashLoopConfig(namespace string, config CrashLoopConfig, result *ValidationResult) {
+	if config.RestartLimit < 1 {
+		result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': crash loop restart limit must be at least 1", namespace))
+	}
 
-		// Validate deployment config
-		if nsConfig.Deployment.FailureThreshold < 1 {
-			result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': deployment failure threshold must be at least 1", namespace))
-		}
+	if config.CheckDuration < time.Second {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': crash loop check duration less than 1 second may cause high CPU usage", namespace))
+	}
+}
 
-		if nsConfig.Deployment.CheckDuration < time.Second {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': deployment check duration less than 1 second may cause high CPU usage", namespace))
-		}
+func (c *Config) validateNamespaceDeploymentConfig(namespace string, config DeploymentConfig, result *ValidationResult) {
+	if config.FailureThreshold < 1 {
+		result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': deployment failure threshold must be at least 1", namespace))
+	}
 
-		// Validate CPU config
-		if nsConfig.CPU.ThresholdPercent < 0 || nsConfig.CPU.ThresholdPercent > 100 {
-			result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': CPU threshold percent must be between 0 and 100", namespace))
-		}
+	if config.CheckDuration < time.Second {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': deployment check duration less than 1 second may cause high CPU usage", namespace))
+	}
+}
 
-		if nsConfig.CPU.CheckDuration < time.Second {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': CPU check duration less than 1 second may cause high CPU usage", namespace))
-		}
+func (c *Config) validateNamespaceCPUConfig(namespace string, config CPUConfig, result *ValidationResult) {
+	if config.ThresholdPercent < 0 || config.ThresholdPercent > 100 {
+		result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': CPU threshold percent must be between 0 and 100", namespace))
+	}
 
-		// Validate memory config
-		if nsConfig.Memory.ThresholdPercent < 0 || nsConfig.Memory.ThresholdPercent > 100 {
-			result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': memory threshold percent must be between 0 and 100", namespace))
-		}
+	if config.CheckDuration < time.Second {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': CPU check duration less than 1 second may cause high CPU usage", namespace))
+	}
+}
 
-		if nsConfig.Memory.OOMKillThreshold < 1 {
-			result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': OOM kill threshold must be at least 1", namespace))
-		}
+func (c *Config) validateNamespaceMemoryConfig(namespace string, config MemoryConfig, result *ValidationResult) {
+	if config.ThresholdPercent < 0 || config.ThresholdPercent > 100 {
+		result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': memory threshold percent must be between 0 and 100", namespace))
+	}
 
-		if nsConfig.Memory.CheckDuration < time.Second {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': memory check duration less than 1 second may cause high CPU usage", namespace))
-		}
+	if config.OOMKillThreshold < 1 {
+		result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': OOM kill threshold must be at least 1", namespace))
+	}
 
-		// Validate remediation config
-		if nsConfig.Remediation.MaxRetries < 0 {
-			result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': max retries cannot be negative", namespace))
-		}
+	if config.CheckDuration < time.Second {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': memory check duration less than 1 second may cause high CPU usage", namespace))
+	}
+}
 
-		if nsConfig.Remediation.RetryInterval < time.Second {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': retry interval less than 1 second may cause excessive retries", namespace))
-		}
+func (c *Config) validateNamespaceRemediationConfig(namespace string, config NamespaceRemediationConfig, result *ValidationResult) {
+	if config.MaxRetries < 0 {
+		result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': max retries cannot be negative", namespace))
+	}
 
-		if nsConfig.Remediation.CooldownSeconds < 0 {
-			result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': cooldown seconds cannot be negative", namespace))
-		}
+	if config.RetryInterval < time.Second {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("namespace '%s': retry interval less than 1 second may cause excessive retries", namespace))
+	}
+
+	if config.CooldownSeconds < 0 {
+		result.Errors = append(result.Errors, fmt.Sprintf("namespace '%s': cooldown seconds cannot be negative", namespace))
 	}
 }
 

@@ -19,7 +19,7 @@ func BenchmarkRemediationEngine(b *testing.B) {
 	}
 
 	client := fake.NewSimpleClientset(pod)
-	
+
 	config := RemediationConfig{
 		Enabled: true,
 		DryRun:  true, // Use dry run for benchmarking

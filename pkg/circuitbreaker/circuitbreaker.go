@@ -24,13 +24,13 @@ var (
 
 // Config holds circuit breaker configuration
 type Config struct {
-	MaxRequests        uint32
-	Interval           time.Duration
-	Timeout            time.Duration
-	ReadyToTrip        func(counts Counts) bool
-	OnStateChange      func(name string, from State, to State)
-	IsSuccessful       func(err error) bool
-	Fallback           func(ctx context.Context, name string, err error) error
+	MaxRequests   uint32
+	Interval      time.Duration
+	Timeout       time.Duration
+	ReadyToTrip   func(counts Counts) bool
+	OnStateChange func(name string, from State, to State)
+	IsSuccessful  func(err error) bool
+	Fallback      func(ctx context.Context, name string, err error) error
 }
 
 // Counts holds circuit breaker counts

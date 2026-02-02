@@ -94,8 +94,8 @@ func TestEndToEndDetectionAndRemediation(t *testing.T) {
 	// Create KubeGuardian configuration
 	cfg := &config.Config{
 		Detection: config.DetectionConfig{
-			EvaluationInterval: 5 * time.Second,
-			CPUThresholdPercent: 80.0,
+			EvaluationInterval:     5 * time.Second,
+			CPUThresholdPercent:    80.0,
 			MemoryThresholdPercent: 85.0,
 			Namespaces: map[string]config.NamespaceConfig{
 				"kubeguardian-test": {
@@ -113,9 +113,9 @@ func TestEndToEndDetectionAndRemediation(t *testing.T) {
 			},
 		},
 		Remediation: config.RemediationConfig{
-			Enabled:     true,
-			MaxRetries:  3,
-			DryRun:      true, // Use dry run for safety
+			Enabled:         true,
+			MaxRetries:      3,
+			DryRun:          true, // Use dry run for safety
 			CooldownSeconds: 60,
 			Namespaces: map[string]config.NamespaceRemediationConfig{
 				"kubeguardian-test": {
@@ -230,22 +230,22 @@ func TestEndToEndMetricsCollection(t *testing.T) {
 func TestEndToEndConfigurationValidation(t *testing.T) {
 	// Test various configuration scenarios
 	testCases := []struct {
-		name     string
-		config   *config.Config
-		wantErr  bool
+		name    string
+		config  *config.Config
+		wantErr bool
 	}{
 		{
 			name: "valid production config",
 			config: &config.Config{
 				Detection: config.DetectionConfig{
-					EvaluationInterval: 30 * time.Second,
-					CPUThresholdPercent: 80.0,
+					EvaluationInterval:     30 * time.Second,
+					CPUThresholdPercent:    80.0,
 					MemoryThresholdPercent: 85.0,
 				},
 				Remediation: config.RemediationConfig{
-					Enabled:     true,
-					MaxRetries:  3,
-					DryRun:      false,
+					Enabled:         true,
+					MaxRetries:      3,
+					DryRun:          false,
 					CooldownSeconds: 300,
 				},
 			},
@@ -274,11 +274,11 @@ func TestEndToEndConfigurationValidation(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := tc.config.Validate()
-			
+
 			if tc.wantErr && len(result.Errors) == 0 {
 				t.Errorf("Expected validation errors for config: %s", tc.name)
 			}
-			
+
 			if !tc.wantErr && len(result.Errors) > 0 {
 				t.Errorf("Unexpected validation errors for config %s: %v", tc.name, result.Errors)
 			}
