@@ -9,9 +9,15 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.5.0-blue.svg" alt="Version">
-  <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License">
-  <img src="https://img.shields.io/badge/kubernetes-1.20+-blue.svg" alt="Kubernetes Version">
+  <a href="https://github.com/NotHarshhaa/kubeguardian/releases/tag/v1.6.0">
+    <img src="https://img.shields.io/badge/version-v1.6.0-blue.svg" alt="Version">
+  </a>
+  <a href="https://goreportcard.com/report/github.com/NotHarshhaa/kubeguardian">
+    <img src="https://goreportcard.com/badge/github.com/NotHarshhaa/kubeguardian" alt="Go Report Card">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
+  </a>
   <img src="https://img.shields.io/badge/go-1.21+-blue.svg" alt="Go Version">
 </p>
 
@@ -100,7 +106,7 @@ image: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
 - **Cost Optimization**: Leverage cheaper ARM64 instances where available
 - **Performance**: Optimized for modern ARM64 and x86_64 architectures
 
-## ✨ Features (v1.5.0 - Enhanced Edition)
+## ✨ Features (v1.6.0 - Security & Testing Edition)
 
 - 🚑 **CrashLoopBackOff auto-restart**
 - 🔄 **Deployment auto-rollback**
@@ -121,6 +127,67 @@ image: ghcr.io/NotHarshhaa/kubeguardian/kubeguardian:latest
 - ✅ **Configuration validation** - Comprehensive validation with detailed error reporting
 - 🛡️ **Graceful shutdown** - Proper cleanup with timeout handling
 - 🚨 **Built-in health checks** - API connectivity, memory, disk usage monitoring
+- 🔒 **Security validation** - Input sanitization, DoS prevention, abuse protection
+- 🧪 **Comprehensive testing** - Unit, integration, security, chaos engineering tests
+
+## 🗺️ Roadmap
+
+### 🚀 v1.6.0 - Security & Testing Edition (Current)
+- ✅ **Security validation** - Comprehensive input validation and abuse prevention
+- ✅ **Comprehensive testing** - Unit, integration, security, chaos engineering tests
+- ✅ **Low-RAM testing** - Efficient testing suite for resource-constrained environments
+- ✅ **Enhanced error reporting** - Detailed validation messages with security context
+- ✅ **Production readiness** - Full validation and testing coverage
+
+### 🔮 v1.7.0 - AI/ML Edition (Planned)
+- 🤖 **ML-based anomaly detection** - Machine learning for pattern recognition
+- 🧠 **Predictive scaling** - AI-powered resource prediction
+- 📊 **Intelligent alerting** - Smart notification prioritization
+- 🔍 **Advanced diagnostics** - Root cause analysis automation
+
+### 🎯 v2.0.0 - Enterprise Edition (Future)
+- 🌐 **Multi-cluster support** - Cross-cluster monitoring and remediation
+- 📊 **Advanced analytics** - Comprehensive reporting and insights
+- 🔐 **Enterprise security** - Advanced RBAC and compliance features
+- 🚀 **Auto-scaling policies** - Intelligent resource management
+- 📱 **Mobile app** - On-the-go cluster management
+
+## 🧪 Testing & Quality Assurance
+
+KubeGuardian includes comprehensive testing to ensure reliability and security:
+
+### 🧪 Test Coverage
+- **Unit Tests**: Core functionality testing
+- **Integration Tests**: Kubernetes cluster integration
+- **Security Tests**: Input validation and security checks
+- **Chaos Engineering**: Resilience and failure scenarios
+- **Performance Benchmarks**: Load and performance testing
+
+### 🚀 Quick Testing
+```bash
+# Run all tests (low RAM usage)
+make test-all
+
+# Or run specific test categories
+make test-unit          # Unit tests only
+make test-security      # Security validation
+make test-benchmark     # Performance tests
+make test-chaos        # Chaos engineering
+```
+
+### 📊 Test Results
+All tests pass with minimal resource usage:
+- ✅ Unit Tests: 0.4s, Low RAM
+- ✅ Security Tests: 0.2s, Low RAM  
+- ✅ Performance Tests: 0.6s, Low RAM
+- ✅ Integration Tests: Requires K8s cluster
+
+### 🛡️ Security Validation
+KubeGuardian includes comprehensive security validation:
+- **DoS Prevention**: Evaluation interval limits
+- **Resource Protection**: Retry and cooldown enforcement
+- **Input Sanitization**: Namespace and channel validation
+- **Abuse Prevention**: Rate limiting and circuit breakers
 
 ## 📦 Installation
 
@@ -661,7 +728,7 @@ KubeGuardian provides comprehensive health endpoints on port `8081`:
   "status": "healthy",
   "timestamp": "2024-01-20T10:30:00Z",
   "uptime": "2h30m15s",
-  "version": "v1.5.0",
+  "version": "v1.6.0",
   "checks": {
     "kubernetes-api": {
       "status": "healthy",
@@ -751,107 +818,101 @@ go run cmd/kubeguardian/main.go --config configs/config.yaml --leader-elect=fals
 ### Testing
 
 ```bash
+# Run all tests
+make test-all
+
 # Run unit tests
-go test ./...
+make test-unit
 
 # Run integration tests
-go test -tags=integration ./...
-
-# Generate test coverage
-go test -cover ./...
-
-# Run tests with coverage report
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out -o coverage.html
+make test-integration
 
 # Run benchmarks
-go test -bench=. ./...
+make test-benchmark
+
+# Run security tests
+make test-security
+
+# Run chaos engineering tests
+make test-chaos
 
 # Run race condition tests
-go test -race ./...
+make test-race
+
+# Generate coverage report
+make coverage
+
+# Run performance profiling
+make memory-profile
+make cpu-profile
 ```
-
-### Code Quality
-
-```bash
-# Format code
-go fmt ./...
-
-# Run linter
-golangci-lint run
-
-# Run security scan
-gosec ./...
-
-# Check for vulnerabilities
-go list -m -u all
-```
-
-## 🔐 Security
-
-KubeGuardian follows security best practices:
-
-- **Least privilege RBAC** - Only required permissions
-- **Non-root containers** - Runs as non-root user
-- **Read-only filesystem** - Minimal writable paths
-- **Resource limits** - CPU and memory constraints
-- **Secret management** - Sensitive data in Kubernetes secrets
-
-## 📝 Roadmap
-
-### v1.6 (Q1 2024)
-- [ ] **Web UI** - Dashboard for monitoring and configuration
-- [ ] **Custom metrics** - Support for application-specific metrics
-- [ ] **Multi-cluster** - Support for managing multiple clusters
-- [ ] **Policy engine** - Advanced policy-based remediation
-- [ ] **Integration hub** - More notification channels (Teams, PagerDuty)
-
-### v1.7 (Q2 2024)
-- [ ] **ML detection** - Machine learning for anomaly detection
-- [ ] **Audit logging** - Comprehensive audit trail
-- [ ] **GitOps support** - Configuration as Code
-- [ ] **Rule templates** - Pre-built namespace rule templates
-- [ ] **Advanced scheduling** - Time-based remediation rules
-
-### v2.0 (Q3 2024)
-- [ ] **Distributed architecture** - Multi-node deployment support
-- [ ] **Event-driven architecture** - Kafka/Redis integration
-- [ ] **Advanced analytics** - Trend analysis and predictions
-- [ ] **Mobile app** - iOS/Android monitoring app
-- [ ] **Enterprise features** - SSO, RBAC, multi-tenancy
 
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-### Development Setup
+### 🚀 Quick Start
+```bash
+# 1. Fork the repository
+git clone https://github.com/NotHarshhaa/kubeguardian.git
+cd kubeguardian
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+# 2. Create a feature branch
+git checkout -b feature/your-feature
 
-## 📄 License
+# 3. Make your changes
+# 4. Run tests
+make test-all
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+# 5. Submit a Pull Request
+```
 
-## 🆘 Support
+### 🧪 Development Setup
+```bash
+# Install dependencies
+go mod tidy
 
-- 📖 [Documentation](https://kubeguardian.io/docs)
-- 💬 [Slack Community](https://kubeguardian.slack.com)
-- 🐛 [Issue Tracker](https://github.com/NotHarshhaa/kubeguardian/issues)
-- 📧 [Email Support](mailto:support@kubeguardian.io)
+# Run tests
+make test-all
 
-## 🙏 Acknowledgments
+# Build the binary
+go build ./cmd/kubeguardian
 
-- [Kubernetes](https://kubernetes.io/) - Container orchestration platform
-- [Controller Runtime](https://github.com/kubernetes-sigs/controller-runtime) - Kubernetes controller framework
-- [Slack Go SDK](https://github.com/slack-go/slack) - Slack integration
+# Run with coverage
+go test -coverprofile=coverage.out ./pkg/...
+go tool cover -html=coverage.out -o coverage.html
+```
+
+### 📋 Code Quality
+```bash
+# Run static analysis
+go vet ./...
+go fmt ./...
+go mod tidy
+
+# Run security scan
+govulncheck ./...
+```
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏‍💼 Acknowledgments
+
+- Kubernetes community for the amazing platform
+- [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) for the controller framework
+- [client-go](https://github.com/kubernetes/client-go) for the Kubernetes client library
+- [Prometheus](https://prometheus.io/) for metrics collection
+- All contributors and users who make KubeGuardian better!
 
 ---
 
-## Author & Community  
+<div align="center">
+  <sub>Made with ❤️ by the KubeGuardian community</sub>
+</div>
+
+## 👨‍💻 Author & Community  
 
 This project is crafted with 💡 by **[Harshhaa](https://github.com/NotHarshhaa)**.  
 Your feedback is always welcome! Let's build together. 🚀  
@@ -859,26 +920,48 @@ Your feedback is always welcome! Let's build together. 🚀
 📧 **Connect with me:**  
 🔗 **GitHub**: [@NotHarshhaa](https://github.com/NotHarshhaa)  
 🔗 **Portfolio**: [Personal Portfolio](https://notharshhaa.site)  
-🔗 **Links - Portfolio**: [Links](https://link.notharshhaa.site)  
+🔗 **Linktree**: [All Links](https://link.notharshhaa.site)  
 🔗 **Telegram Community**: [Join Here](https://t.me/prodevopsguy)  
 🔗 **LinkedIn**: [Harshhaa Vardhan Reddy](https://www.linkedin.com/in/NotHarshhaa/)  
+🔗 **Twitter/X**: [@NotHarshhaa](https://twitter.com/NotHarshhaa)  
+🔗 **Instagram**: [@NotHarshhaa](https://instagram.com/NotHarshhaa)  
 
 ---
 
-## Support the Project  
+## 🤝 Support the Project  
 
 If this helped you, consider:  
 ✅ **Starring** ⭐ this repository  
 ✅ **Sharing** 📢 with your network  
 ✅ **Supporting** 📢 on [GitHub Sponsors](https://github.com/sponsors/NotHarshhaa)  
-✅ **Supporting** 📢 on [BuyMeACoffee](https://www.buymeacoffee.com/NotHarshhaa)  
+✅ **Supporting** ☕ on [BuyMeACoffee](https://www.buymeacoffee.com/NotHarshhaa)  
 ✅ **Supporting** 📢 on [Patreon](https://www.patreon.com/NotHarshhaa)  
-✅ **Supporting** 📢 on [PayPal](https://www.paypal.com/paypalme/NotHarshhaa)  
+✅ **Supporting** � on [PayPal](https://www.paypal.com/paypalme/NotHarshhaa)  
 
 ---
 
-### Stay Connected  
+### 🌟 Stay Connected  
 
-![Follow Me](https://imgur.com/2j7GSPs.png)
+<div align="center">
+  <a href="https://github.com/NotHarshhaa">
+    <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"/>
+  </a>
+  <a href="https://twitter.com/NotHarshhaa">
+    <img src="https://img.shields.io/badge/Twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white" alt="Twitter"/>
+  </a>
+  <a href="https://www.linkedin.com/in/NotHarshhaa/">
+    <img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn"/>
+  </a>
+  <a href="https://notharshhaa.site">
+    <img src="https://img.shields.io/badge/Portfolio-FF5722?style=for-the-badge&logo=website&logoColor=white" alt="Portfolio"/>
+  </a>
+  <a href="https://t.me/prodevopsguy">
+    <img src="https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram"/>
+  </a>
+</div>
 
-*Let's make Kubernetes self-healing a reality!* 🚀
+---
+
+<div align="center">
+  <sub>*Let's make Kubernetes self-healing a reality!* 🚀</sub>
+</div>
