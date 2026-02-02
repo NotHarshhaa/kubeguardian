@@ -92,12 +92,24 @@ func (c *Config) validateRemediation(result *ValidationResult) {
 		result.Errors = append(result.Errors, "max retries cannot be negative")
 	}
 
+	if c.Remediation.MaxRetries > 10 {
+		result.Errors = append(result.Errors, "max retries too high (security: potential resource exhaustion)")
+	}
+
 	if c.Remediation.RetryInterval < time.Second {
 		result.Warnings = append(result.Warnings, "retry interval less than 1 second may cause excessive retries")
 	}
 
+	if c.Remediation.RetryInterval < 100*time.Millisecond {
+		result.Errors = append(result.Errors, "retry interval too short (security: thundering herd risk)")
+	}
+
 	if c.Remediation.CooldownSeconds < 0 {
 		result.Errors = append(result.Errors, "cooldown seconds cannot be negative")
+	}
+
+	if c.Remediation.CooldownSeconds == 0 {
+		result.Errors = append(result.Errors, "cooldown disabled (security: potential for abuse)")
 	}
 
 	if c.Remediation.CooldownSeconds > 3600 {
