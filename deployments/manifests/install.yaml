@@ -43,7 +43,7 @@ metadata:
 rules:
 # Core permissions for monitoring
 - apiGroups: [""]
-  resources: ["pods", "pods/log", "events"]
+  resources: ["pods", "pods/log", "events", "namespaces"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["pods"]
@@ -130,7 +130,7 @@ data:
       enabled: true
       maxRetries: 3
       retryInterval: 10s
-      dryRun: false
+      dryRun: true
       autoRollbackEnabled: true
       autoScaleEnabled: true
     
@@ -170,7 +170,7 @@ data:
             field: "status.containerStatuses[*].state.waiting.reason"
             operator: "equals"
             value: "CrashLoopBackOff"
-            duration: "5m"
+            duration: "1m"
         actions:
           - "restart-pod"
         severity: "high"
@@ -295,7 +295,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: kubeguardian
-        image: kubeguardian/kubeguardian:v1.0.0
+        image: kubeguardian/kubeguardian:latest
         imagePullPolicy: IfNotPresent
         args:
         - --leader-elect
