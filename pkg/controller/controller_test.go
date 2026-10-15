@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 )
 
 // MockKubernetesClient extends fake client with additional mock capabilities
@@ -27,7 +28,17 @@ func NewMockKubernetesClient(objects ...runtime.Object) *MockKubernetesClient {
 	}
 }
 
+// skipIfNotInCluster skips the test if not running inside a Kubernetes cluster
+func skipIfNotInCluster(t *testing.T) {
+	t.Helper()
+	if _, err := rest.InClusterConfig(); err != nil {
+		t.Skipf("Skipping test: not running in a Kubernetes cluster: %v", err)
+	}
+}
+
 func TestNewController(t *testing.T) {
+	skipIfNotInCluster(t)
+
 	// Create test configuration
 	cfg := &config.Config{
 		Detection: config.DetectionConfig{
@@ -61,6 +72,8 @@ func TestNewController(t *testing.T) {
 }
 
 func TestControllerRun(t *testing.T) {
+	skipIfNotInCluster(t)
+
 	// Create test objects
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -120,6 +133,8 @@ func TestControllerRun(t *testing.T) {
 }
 
 func TestControllerProcessIssue(t *testing.T) {
+	skipIfNotInCluster(t)
+
 	// Create test pod
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -168,6 +183,8 @@ func TestControllerProcessIssue(t *testing.T) {
 }
 
 func TestControllerGetClient(t *testing.T) {
+	skipIfNotInCluster(t)
+
 	client := NewMockKubernetesClient()
 
 	cfg := &config.Config{
@@ -252,6 +269,8 @@ func TestControllerErrorHandling(t *testing.T) {
 }
 
 func TestControllerMetricsIntegration(t *testing.T) {
+	skipIfNotInCluster(t)
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod",
@@ -293,6 +312,8 @@ func TestControllerMetricsIntegration(t *testing.T) {
 }
 
 func TestControllerGracefulShutdown(t *testing.T) {
+	skipIfNotInCluster(t)
+
 	_ = NewMockKubernetesClient()
 
 	cfg := &config.Config{

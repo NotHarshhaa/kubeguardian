@@ -7,6 +7,7 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
@@ -16,6 +17,7 @@ import (
 	"github.com/NotHarshhaa/kubeguardian/pkg/metrics"
 	"github.com/NotHarshhaa/kubeguardian/pkg/notification"
 	"github.com/NotHarshhaa/kubeguardian/pkg/remediation"
+	"github.com/NotHarshhaa/kubeguardian/pkg/version"
 )
 
 // Controller represents the main KubeGuardian controller
@@ -31,12 +33,12 @@ type Controller struct {
 // NewController creates a new controller instance
 func NewController(cfg *config.Config, metricsCollector *metrics.Metrics) (*Controller, error) {
 	// Create Kubernetes client
-	config, err := rest.InClusterConfig()
+	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get in-cluster config: %w", err)
 	}
 
-	client, err := kubernetes.NewForConfig(config)
+	client, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
@@ -102,7 +104,7 @@ func (c *Controller) Run(ctx context.Context) error {
 			logger.Error(err, "Slack connection test failed, continuing without Slack notifications")
 		} else {
 			// Send startup notification
-			if err := c.slackNotifier.SendStartupNotification(ctx, "v1.0.0"); err != nil {
+			if err := c.slackNotifier.SendStartupNotification(ctx, version.Version); err != nil {
 				logger.Error(err, "Failed to send startup notification")
 			}
 		}
@@ -279,15 +281,18 @@ func (c *Controller) GetClient() kubernetes.Interface {
 
 // SetupManager sets up the controller-runtime manager
 func SetupManager(cfg *config.Config) (manager.Manager, error) {
-	config, err := rest.InClusterConfig()
+	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get in-cluster config: %w", err)
 	}
 
-	mgr, err := manager.New(config, manager.Options{
+	mgr, err := manager.New(restConfig, manager.Options{
 		HealthProbeBindAddress: cfg.Controller.ProbeAddr,
 		LeaderElection:         cfg.Controller.LeaderElection,
 		LeaderElectionID:       "kubeguardian-leader-election",
+		Cache: cache.Options{
+			SyncPeriod: &cfg.Controller.SyncPeriod,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create manager: %w", err)

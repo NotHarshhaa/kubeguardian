@@ -137,8 +137,12 @@ func TestHealthCheckTimeout(t *testing.T) {
 	slowCheck := &MockCheck{
 		name: "slow",
 		checkFunc: func(ctx context.Context) error {
-			time.Sleep(200 * time.Millisecond) // Longer than timeout
-			return nil
+			select {
+			case <-time.After(200 * time.Millisecond): // Longer than timeout
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		},
 	}
 	hc.RegisterCheck(slowCheck)
@@ -241,7 +245,13 @@ func (m *MockCheck) Check(ctx context.Context) error {
 	if m.checkFunc != nil {
 		return m.checkFunc(ctx)
 	}
-	return nil
+	// Respect context cancellation even with default behavior
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
 }
 
 // Helper function

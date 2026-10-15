@@ -10,12 +10,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NotHarshhaa/kubeguardian/pkg/circuitbreaker"
 	"github.com/NotHarshhaa/kubeguardian/pkg/config"
 	"github.com/NotHarshhaa/kubeguardian/pkg/controller"
 	"github.com/NotHarshhaa/kubeguardian/pkg/metrics"
-	appsv1 "k8s.io/api/apps/v1"
+	"github.com/NotHarshhaa/kubeguardian/pkg/ratelimit"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -77,7 +80,8 @@ func testAPIServerLatency(t *testing.T, client *fake.Clientset) {
 		},
 	}
 
-	client.Fake.Resources = append(client.Fake.Resources, pod)
+	// Recreate clientset with the pod
+	client = fake.NewSimpleClientset(pod)
 
 	// Create controller with configuration
 	cfg := &config.Config{
@@ -155,6 +159,7 @@ func testAPIServerFailures(t *testing.T, client *fake.Clientset) {
 
 func testResourceExhaustion(t *testing.T, client *fake.Clientset) {
 	// Create many resources to simulate resource exhaustion
+	var pods []runtime.Object
 	for i := 0; i < 1000; i++ {
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
@@ -162,8 +167,11 @@ func testResourceExhaustion(t *testing.T, client *fake.Clientset) {
 				Namespace: "default",
 			},
 		}
-		client.Fake.Resources = append(client.Fake.Resources, pod)
+		pods = append(pods, pod)
 	}
+
+	// Recreate clientset with all pods
+	client = fake.NewSimpleClientset(pods...)
 
 	cfg := &config.Config{
 		Detection: config.DetectionConfig{
@@ -257,6 +265,7 @@ func testMemoryPressure(t *testing.T, client *fake.Clientset) {
 	}
 
 	// Create many objects to increase memory pressure
+	var pods []runtime.Object
 	for i := 0; i < 100; i++ {
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
@@ -276,8 +285,11 @@ func testMemoryPressure(t *testing.T, client *fake.Clientset) {
 				},
 			},
 		}
-		client.Fake.Resources = append(client.Fake.Resources, pod)
+		pods = append(pods, pod)
 	}
+
+	// Recreate clientset with all pods
+	client = fake.NewSimpleClientset(pods...)
 
 	// Run controller under memory pressure
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -307,6 +319,7 @@ func testHighLoad(t *testing.T, client *fake.Clientset) {
 	}
 
 	// Create resources that require processing
+	var pods []runtime.Object
 	for i := 0; i < 50; i++ {
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
@@ -317,8 +330,11 @@ func testHighLoad(t *testing.T, client *fake.Clientset) {
 				Phase: corev1.PodFailed, // Generate issues to process
 			},
 		}
-		client.Fake.Resources = append(client.Fake.Resources, pod)
+		pods = append(pods, pod)
 	}
+
+	// Recreate clientset with all pods
+	client = fake.NewSimpleClientset(pods...)
 
 	// Run controller under high load
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -342,7 +358,9 @@ func TestCircuitBreakerChaos(t *testing.T) {
 		MaxRequests: 5,
 		Interval:    100 * time.Millisecond,
 		Timeout:     50 * time.Millisecond,
-		TripAfter:   3,
+		ReadyToTrip: func(counts circuitbreaker.Counts) bool {
+			return counts.ConsecutiveFailures >= 3
+		},
 	})
 
 	// Simulate chaotic conditions
@@ -353,7 +371,7 @@ func TestCircuitBreakerChaos(t *testing.T) {
 	failureCount := 0
 
 	for i := 0; i < 100; i++ {
-		err := cb.Call(ctx, func(ctx context.Context) error {
+		err := cb.Execute(ctx, func() error {
 			if rand.Intn(10) < 7 { // 70% failure rate
 				return fmt.Errorf("chaos failure")
 			}
@@ -383,9 +401,6 @@ func TestRateLimiterChaos(t *testing.T) {
 	rl := ratelimit.NewActionRateLimiter(10, 20) // 10 req/sec, 20 burst capacity
 
 	// Simulate burst traffic
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
 	allowedCount := 0
 	deniedCount := 0
 

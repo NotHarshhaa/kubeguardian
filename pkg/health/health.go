@@ -84,20 +84,29 @@ func (h *HealthCheck) RegisterCheck(checker Checker) {
 
 // RunChecks runs all registered health checks
 func (h *HealthCheck) RunChecks(ctx context.Context) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
+	// Snapshot the checkers under lock, then run them without holding the lock
+	// to avoid blocking concurrent GetHealth() calls.
+	h.mu.RLock()
+	checkers := make(map[string]Checker, len(h.checks))
 	for name, checker := range h.checks {
-		start := time.Now()
+		checkers[name] = checker
+	}
+	h.mu.RUnlock()
 
+	for name, checker := range checkers {
+		// Create a per-check context with timeout to enforce deadline
+		checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+
+		start := time.Now()
 		result := Check{
 			Name:        name,
 			LastChecked: start,
 			Duration:    0,
 		}
 
-		err := checker.Check(ctx)
+		err := checker.Check(checkCtx)
 		result.Duration = time.Since(start)
+		cancel()
 
 		if err != nil {
 			result.Status = StatusUnhealthy
@@ -107,7 +116,9 @@ func (h *HealthCheck) RunChecks(ctx context.Context) {
 			result.Message = "OK"
 		}
 
+		h.mu.Lock()
 		h.results[name] = result
+		h.mu.Unlock()
 	}
 }
 

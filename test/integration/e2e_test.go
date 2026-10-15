@@ -11,10 +11,12 @@ import (
 
 	"github.com/NotHarshhaa/kubeguardian/pkg/config"
 	"github.com/NotHarshhaa/kubeguardian/pkg/controller"
+	"github.com/NotHarshhaa/kubeguardian/pkg/health"
 	"github.com/NotHarshhaa/kubeguardian/pkg/metrics"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -26,12 +28,12 @@ func TestEndToEndDetectionAndRemediation(t *testing.T) {
 	}
 
 	// Create Kubernetes client
-	config, err := rest.InClusterConfig()
+	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		t.Fatalf("Failed to get in-cluster config: %v", err)
 	}
 
-	client, err := kubernetes.NewForConfig(config)
+	client, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		t.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
@@ -164,12 +166,12 @@ func TestEndToEndHealthChecks(t *testing.T) {
 	}
 
 	// Create Kubernetes client
-	config, err := rest.InClusterConfig()
+	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		t.Fatalf("Failed to get in-cluster config: %v", err)
 	}
 
-	client, err := kubernetes.NewForConfig(config)
+	client, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		t.Fatalf("Failed to create Kubernetes client: %v", err)
 	}
@@ -182,13 +184,13 @@ func TestEndToEndHealthChecks(t *testing.T) {
 	healthChecker.RunChecks(ctx)
 
 	// Check overall health
-	overall := healthChecker.Overall()
-	if overall != health.StatusHealthy {
-		t.Errorf("Overall health status should be healthy, got %s", overall)
+	healthResp := healthChecker.GetHealth()
+	if healthResp.Status != health.StatusHealthy {
+		t.Errorf("Overall health status should be healthy, got %s", healthResp.Status)
 	}
 
 	// Check individual checks
-	results := healthChecker.Results()
+	results := healthResp.Checks
 	if len(results) == 0 {
 		t.Error("No health check results found")
 	}

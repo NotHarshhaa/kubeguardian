@@ -1,0 +1,193 @@
+# Test Applications for KubeGuardian
+# This file contains various test scenarios to validate KubeGuardian functionality
+
+---
+# Namespace for test applications
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-apps
+  labels:
+    environment: test
+
+---
+# 1. CrashLoopBackOff Test Application
+# This pod will crash immediately to test CrashLoopBackOff detection
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crashloop-pod
+  namespace: test-apps
+  labels:
+    app: crashloop-test
+spec:
+  containers:
+  - name: crash-container
+    image: alpine:latest
+    command: ["sh", "-c", "exit 1"]  # Always exits with error
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+  restartPolicy: Always
+
+---
+# 2. Failed Deployment Test
+# This deployment uses a non-existent image to test failure detection
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: failing-deployment
+  namespace: test-apps
+  labels:
+    app: failing-test
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: failing-test
+  template:
+    metadata:
+      labels:
+        app: failing-test
+    spec:
+      containers:
+      - name: main-container
+        image: non-existent-registry/non-existent-image:latest  # Invalid image
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+
+---
+# 3. High CPU Usage Test Application
+# This pod will consume high CPU to test CPU-based scaling
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cpu-intensive-app
+  namespace: test-apps
+  labels:
+    app: cpu-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cpu-test
+  template:
+    metadata:
+      labels:
+        app: cpu-test
+    spec:
+      containers:
+      - name: stress-container
+        image: polinux/stress
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        command: ["stress"]
+        args: ["--cpu", "2", "--timeout", "300s"]  # High CPU stress for 5 minutes
+
+---
+# 4. Memory Spike Test Application
+# This pod will consume increasing memory to test memory-based remediation
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-intensive-app
+  namespace: test-apps
+  labels:
+    app: memory-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memory-test
+  template:
+    metadata:
+      labels:
+        app: memory-test
+    spec:
+      containers:
+      - name: memory-stress-container
+        image: polinux/stress
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"  # Low limit to trigger OOM
+            cpu: "200m"
+        command: ["stress"]
+        args: ["--vm", "1", "--vm-bytes", "200M", "--vm-hang", "1", "--timeout", "300s"]
+
+---
+# 5. Healthy Application (Control Group)
+# This is a normal application that should not trigger any alerts
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: healthy-app
+  namespace: test-apps
+  labels:
+    app: healthy-test
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: healthy-test
+  template:
+    metadata:
+      labels:
+        app: healthy-test
+    spec:
+      containers:
+      - name: nginx-container
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Service for the healthy application
+apiVersion: v1
+kind: Service
+metadata:
+  name: healthy-app-service
+  namespace: test-apps
+spec:
+  selector:
+    app: healthy-test
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: ClusterIP

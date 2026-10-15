@@ -1,0 +1,20 @@
+# High CPU Usage Test
+apiVersion: v1
+kind: Pod
+metadata:
+  name: high-cpu-test
+  namespace: test-apps
+  labels:
+    app: high-cpu-test
+spec:
+  containers:
+  - name: cpu-container
+    image: alpine:latest
+    command: ["sh", "-c", "while true; do dd if=/dev/zero of=/dev/null; done"]
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "1000m"
+        memory: "256Mi"

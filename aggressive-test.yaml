@@ -1,0 +1,21 @@
+# Aggressive CrashLoopBackOff Test
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aggressive-crashloop
+  namespace: test-apps
+  labels:
+    app: aggressive-test
+spec:
+  containers:
+  - name: crash-container
+    image: alpine:latest
+    command: ["sh", "-c", "while true; do echo 'Crashing immediately...'; exit 1; done"]
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "10m"
+      limits:
+        memory: "64Mi"
+        cpu: "50m"
+  restartPolicy: Always

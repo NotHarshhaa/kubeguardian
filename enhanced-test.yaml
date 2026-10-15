@@ -1,0 +1,78 @@
+# Enhanced Test Scenarios for KubeGuardian
+# These are designed to trigger the exact detection conditions
+
+---
+# 1. True CrashLoopBackOff Test
+# This pod will actually enter CrashLoopBackOff state
+apiVersion: v1
+kind: Pod
+metadata:
+  name: true-crashloop-pod
+  namespace: test-apps
+  labels:
+    app: true-crashloop-test
+spec:
+  containers:
+  - name: crash-container
+    image: alpine:latest
+    command: ["sh", "-c", "while true; do echo 'Starting...'; sleep 1; exit 1; done"]
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+  restartPolicy: Always
+
+---
+# 2. Deployment that will definitely fail
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guaranteed-fail-deployment
+  namespace: test-apps
+  labels:
+    app: guaranteed-fail-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guaranteed-fail-test
+  template:
+    metadata:
+      labels:
+        app: guaranteed-fail-test
+    spec:
+      containers:
+      - name: main-container
+        image: nginx:invalidtag999  # This will definitely fail
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+
+---
+# 3. Simple CPU stress test that should trigger metrics
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-cpu-stress
+  namespace: test-apps
+  labels:
+    app: cpu-stress-test
+spec:
+  containers:
+  - name: stress-container
+    image: alpine:latest
+    command: ["sh", "-c", "dd if=/dev/zero of=/dev/null | dd if=/dev/zero of=/dev/null"]
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "1000m"  # High limit
+        memory: "256Mi"

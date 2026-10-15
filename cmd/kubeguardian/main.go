@@ -14,6 +14,7 @@ import (
 	"github.com/NotHarshhaa/kubeguardian/pkg/health"
 	"github.com/NotHarshhaa/kubeguardian/pkg/metrics"
 	"github.com/NotHarshhaa/kubeguardian/pkg/version"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -102,11 +103,12 @@ func main() {
 	defer cancel()
 
 	// Start the controller in a goroutine
+	ctrlDone := make(chan error, 1)
 	go func() {
 		if err := ctrl.Run(ctx); err != nil {
 			logger.Error(err, "Controller failed")
-			os.Exit(1)
 		}
+		ctrlDone <- nil
 	}()
 
 	// Start metrics updater
@@ -124,15 +126,8 @@ func main() {
 	cancel()
 
 	// Wait for graceful shutdown or timeout
-	done := make(chan struct{})
-	go func() {
-		// Give some time for cleanup
-		time.Sleep(5 * time.Second)
-		close(done)
-	}()
-
 	select {
-	case <-done:
+	case <-ctrlDone:
 		logger.Info("KubeGuardian stopped gracefully")
 	case <-shutdownCtx.Done():
 		logger.Info("KubeGuardian stopped due to timeout")
@@ -141,20 +136,42 @@ func main() {
 
 // setupHTTPServers sets up HTTP servers for health checks and metrics
 func setupHTTPServers(cfg *config.Config, healthChecker *health.HealthCheck, metricsCollector *metrics.Metrics) {
-	// Setup health check server
+	// Create a mux that combines all health and metrics routes
+	mux := http.NewServeMux()
+
+	// Health check endpoint (handles all paths via the health handler)
+	mux.HandleFunc("/", healthChecker.HTTPHandler())
+
+	// Readiness probe
+	mux.HandleFunc("/readyz", healthChecker.ReadinessHandler())
+
+	// Liveness probe
+	mux.HandleFunc("/healthz", healthChecker.LivenessHandler())
+
+	// Metrics endpoint
+	mux.Handle("/metrics", promhttp.Handler())
+
+	// Setup health and metrics server
 	healthServer := &http.Server{
 		Addr:    cfg.Controller.ProbeAddr,
-		Handler: healthChecker.HTTPHandler(),
+		Handler: mux,
 	}
 
-	// Setup readiness probe
-	http.HandleFunc("/readyz", healthChecker.ReadinessHandler())
-	http.HandleFunc("/healthz", healthChecker.LivenessHandler())
+	// Setup dedicated metrics server
+	metricsServer := &http.Server{
+		Addr:    cfg.Controller.MetricsAddr,
+		Handler: promhttp.Handler(),
+	}
 
-	// Setup metrics server (handled by controller-runtime)
 	go func() {
 		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Log.Error(err, "Health server failed")
+		}
+	}()
+
+	go func() {
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Log.Error(err, "Metrics server failed")
 		}
 	}()
 }
