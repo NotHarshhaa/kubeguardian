@@ -159,6 +159,27 @@ rules:
       category: "pod-health"
       auto-remediation: "true"
 
+  # Disk Pressure Detection (disabled by default)
+  # - name: "disk-pressure"
+  #   description: "Detect nodes experiencing disk pressure"
+  #   enabled: false
+  #   conditions:
+  #     - resource: "Node"
+  #       field: "status.conditions[*].type"
+  #       operator: "equals"
+  #       value: "DiskPressure"
+  #     - resource: "Node"
+  #       field: "status.conditions[*].status"
+  #       operator: "equals"
+  #       value: "True"
+  #   actions:
+  #     - "notify-only"
+  #   severity: "high"
+  #   labels:
+  #     team: "platform"
+  #     category: "node-health"
+  #     auto-remediation: "false"
+
 # Custom rule examples (disabled by default)
 # Uncomment and customize as needed
 

@@ -24,6 +24,22 @@ detection:
   failedDeploymentThreshold: 5
   # CPU usage percentage threshold for auto-scaling
   cpuThresholdPercent: 80.0
+  # Memory usage percentage threshold for remediation
+  memoryThresholdPercent: 85.0
+  # OOM kill threshold (number of OOM kills before triggering remediation)
+  oomKillThreshold: 2
+  # Node health detection settings
+  nodeDetection:
+    # Enable node health detection
+    enabled: true
+    # How often to check node health
+    checkInterval: 1m
+    # Automatically cordon nodes with critical issues (NotReady)
+    autoCordon: false
+    # Automatically uncordon nodes when they become healthy
+    autoUncord: false
+    # How long to keep a node cordoned
+    cordonDuration: 15m
 
 remediation:
   # Enable remediation actions
@@ -38,6 +54,8 @@ remediation:
   autoRollbackEnabled: true
   # Enable automatic replica scaling
   autoScaleEnabled: true
+  # Cooldown period between remediation actions (seconds)
+  cooldownSeconds: 300
 
 notification:
   slack:
@@ -51,3 +69,37 @@ notification:
     username: "KubeGuardian"
     # Icon emoji for the bot
     iconEmoji: ":robot_face:"
+  email:
+    # Enable email notifications
+    enabled: false
+    # SMTP server host
+    host: "smtp.example.com"
+    # SMTP server port
+    port: 587
+    # SMTP username
+    username: ""
+    # SMTP password (should be provided via secret in production)
+    password: ""
+    # Sender email address
+    from: "kubeguardian@example.com"
+    # Recipient email address
+    to: ""
+    # Use TLS for SMTP connection
+    useTLS: false
+    # Skip TLS certificate verification (insecure)
+    skipTLSVerify: false
+  webhook:
+    # Enable webhook notifications
+    enabled: false
+    # Webhook URL
+    url: ""
+    # HTTP method (POST, PUT, PATCH)
+    method: "POST"
+    # Custom HTTP headers
+    headers: {}
+    # Request timeout
+    timeout: 10s
+    # Secret token for webhook authentication (sent as X-KubeGuardian-Secret header)
+    secret: ""
+    # Payload type (json)
+    payloadType: "json"

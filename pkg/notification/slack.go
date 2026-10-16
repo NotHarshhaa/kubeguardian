@@ -42,6 +42,16 @@ func NewSlackNotifier(config SlackConfig) *SlackNotifier {
 	}
 }
 
+// Name returns the notifier name
+func (s *SlackNotifier) Name() string {
+	return "slack"
+}
+
+// IsEnabled returns true if Slack notifications are enabled
+func (s *SlackNotifier) IsEnabled() bool {
+	return s != nil && s.config.Enabled
+}
+
 // SendIssueNotification sends a notification about a detected issue
 func (s *SlackNotifier) SendIssueNotification(ctx context.Context, issue detection.Issue) error {
 	if s == nil || !s.config.Enabled {

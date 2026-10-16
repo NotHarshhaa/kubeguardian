@@ -25,6 +25,7 @@ type Engine struct {
 	circuitBreaker map[string]*circuitbreaker.CircuitBreaker
 	rateLimiter    *ratelimit.ActionRateLimiter
 	metrics        *metrics.Metrics
+	history        *HistoryStore
 }
 
 // RemediationConfig contains remediation configuration
@@ -98,12 +99,16 @@ func NewEngine(client kubernetes.Interface, config RemediationConfig) *Engine {
 	// Create rate limiter
 	rateLimiter := ratelimit.NewActionRateLimiter(10, 100) // 10 actions/sec, 100 bucket capacity
 
+	// Create history store
+	historyStore := NewHistoryStore(10000)
+
 	return &Engine{
 		client:         client,
 		config:         config,
 		cooldowns:      make(map[string]CooldownEntry),
 		circuitBreaker: circuitBreakers,
 		rateLimiter:    rateLimiter,
+		history:        historyStore,
 	}
 }
 
@@ -169,27 +174,32 @@ func (e *Engine) ExecuteAction(ctx context.Context, action string, resource inte
 		if err == nil && result.Success {
 			e.recordCooldown(cooldownKey)
 		}
+		e.recordHistory(action, resource, namespace, result, err == nil)
 		return result, err
 	case "rollback-deployment":
 		result, err := e.rollbackDeployment(ctx, resource, namespace)
 		if err == nil && result.Success {
 			e.recordCooldown(cooldownKey)
 		}
+		e.recordHistory(action, resource, namespace, result, err == nil)
 		return result, err
 	case "scale-replicas":
 		result, err := e.scaleReplicas(ctx, resource, namespace)
 		if err == nil && result.Success {
 			e.recordCooldown(cooldownKey)
 		}
+		e.recordHistory(action, resource, namespace, result, err == nil)
 		return result, err
 	default:
-		return &Result{
+		result := &Result{
 			Action:     action,
 			Success:    false,
 			Message:    fmt.Sprintf("Unknown action: %s", action),
 			ExecutedAt: time.Now(),
 			Duration:   time.Since(startTime),
-		}, fmt.Errorf("unknown action: %s", action)
+		}
+		e.recordHistory(action, resource, namespace, result, false)
+		return result, fmt.Errorf("unknown action: %s", action)
 	}
 }
 
@@ -239,6 +249,52 @@ func (e *Engine) recordCooldown(cooldownKey string) {
 		ResourceKey: cooldownKey,
 		LastAction:  time.Now(),
 	}
+}
+
+// recordHistory records a remediation action in the history store
+func (e *Engine) recordHistory(action string, resource interface{}, namespace string, result *Result, success bool) {
+	entry := HistoryEntry{
+		ID:          GenerateID(action, namespace, e.getResourceName(resource)),
+		Action:      action,
+		Resource:    e.getResourceName(resource),
+		Namespace:   namespace,
+		Kind:        e.getResourceKind(resource),
+		Success:     success,
+		Message:     result.Message,
+		ExecutedAt:  result.ExecutedAt,
+		Duration:    result.Duration,
+		DryRun:      e.config.DryRun,
+		CooldownUsed: e.isInCooldown(fmt.Sprintf("%s:%s:%s", namespace, e.getResourceName(resource), action), 0),
+	}
+
+	e.history.Add(entry)
+}
+
+// getResourceKind extracts the resource kind from different resource types
+func (e *Engine) getResourceKind(resource interface{}) string {
+	switch resource.(type) {
+	case *corev1.Pod:
+		return "Pod"
+	case *appsv1.Deployment:
+		return "Deployment"
+	default:
+		return "Unknown"
+	}
+}
+
+// History returns remediation history entries
+func (e *Engine) History(namespace, action string, limit int) []HistoryEntry {
+	return e.history.Get(namespace, action, limit)
+}
+
+// HistoryStats returns statistics about remediation history
+func (e *Engine) HistoryStats() HistoryStats {
+	return e.history.GetStats()
+}
+
+// ClearHistory clears all remediation history
+func (e *Engine) ClearHistory() {
+	e.history.Clear()
 }
 
 // CleanupCooldowns removes expired cooldown entries to prevent memory leaks

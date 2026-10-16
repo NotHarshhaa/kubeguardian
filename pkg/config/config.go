@@ -139,6 +139,37 @@ func (c *Config) validateNotification(result *ValidationResult) {
 			}
 		}
 	}
+
+	if c.Notification.Email.Enabled {
+		if c.Notification.Email.Host == "" {
+			result.Errors = append(result.Errors, "email host is required when email notifications are enabled")
+		}
+
+		if c.Notification.Email.Port < 1 || c.Notification.Email.Port > 65535 {
+			result.Errors = append(result.Errors, "email port must be between 1 and 65535")
+		}
+
+		if c.Notification.Email.From == "" {
+			result.Errors = append(result.Errors, "email from address is required when email notifications are enabled")
+		}
+
+		if c.Notification.Email.To == "" {
+			result.Errors = append(result.Errors, "email to address is required when email notifications are enabled")
+		}
+	}
+
+	if c.Notification.Webhook.Enabled {
+		if c.Notification.Webhook.URL == "" {
+			result.Errors = append(result.Errors, "webhook URL is required when webhook notifications are enabled")
+		}
+
+		if c.Notification.Webhook.Method != "" &&
+			c.Notification.Webhook.Method != "POST" &&
+			c.Notification.Webhook.Method != "PUT" &&
+			c.Notification.Webhook.Method != "PATCH" {
+			result.Errors = append(result.Errors, "webhook method must be POST, PUT, or PATCH")
+		}
+	}
 }
 
 func (c *Config) validateNamespaces(result *ValidationResult) {
@@ -258,6 +289,16 @@ type DetectionConfig struct {
 	MemoryThresholdPercent    float64                    `yaml:"memoryThresholdPercent"`
 	OOMKillThreshold          int                        `yaml:"oomKillThreshold"`
 	Namespaces                map[string]NamespaceConfig `yaml:"namespaces"`
+	NodeDetection             NodeDetectionConfig        `yaml:"nodeDetection"`
+}
+
+// NodeDetectionConfig contains node health detection settings
+type NodeDetectionConfig struct {
+	Enabled        bool          `yaml:"enabled"`
+	CheckInterval  time.Duration `yaml:"checkInterval"`
+	AutoCordon     bool          `yaml:"autoCordon"`
+	AutoUncord     bool          `yaml:"autoUncord"`
+	CordonDuration time.Duration `yaml:"cordonDuration"`
 }
 
 // NamespaceConfig contains namespace-specific detection and remediation settings
@@ -322,7 +363,9 @@ type RemediationConfig struct {
 
 // NotificationConfig contains notification settings
 type NotificationConfig struct {
-	Slack SlackConfig `yaml:"slack"`
+	Slack   SlackConfig   `yaml:"slack"`
+	Email   EmailConfig   `yaml:"email"`
+	Webhook WebhookConfig `yaml:"webhook"`
 }
 
 // SlackConfig contains Slack-specific settings
@@ -332,6 +375,30 @@ type SlackConfig struct {
 	Channel   string `yaml:"channel"`
 	Username  string `yaml:"username"`
 	IconEmoji string `yaml:"iconEmoji"`
+}
+
+// EmailConfig contains email notification settings
+type EmailConfig struct {
+	Enabled         bool   `yaml:"enabled"`
+	Host            string `yaml:"host"`
+	Port            int    `yaml:"port"`
+	Username        string `yaml:"username"`
+	Password        string `yaml:"password"`
+	From            string `yaml:"from"`
+	To              string `yaml:"to"`
+	UseTLS          bool   `yaml:"useTLS"`
+	SkipTLSVerify   bool   `yaml:"skipTLSVerify"`
+}
+
+// WebhookConfig contains webhook notification settings
+type WebhookConfig struct {
+	Enabled     bool              `yaml:"enabled"`
+	URL         string            `yaml:"url"`
+	Method      string            `yaml:"method"`
+	Headers     map[string]string `yaml:"headers"`
+	Timeout     time.Duration     `yaml:"timeout"`
+	Secret      string            `yaml:"secret"`
+	PayloadType string            `yaml:"payloadType"`
 }
 
 // DefaultConfig returns a default configuration
@@ -385,6 +452,13 @@ func DefaultConfig() *Config {
 					},
 				},
 			},
+			NodeDetection: NodeDetectionConfig{
+				Enabled:        true,
+				CheckInterval:  1 * time.Minute,
+				AutoCordon:     false,
+				AutoUncord:     false,
+				CordonDuration: 15 * time.Minute,
+			},
 		},
 		Remediation: RemediationConfig{
 			Enabled:             true,
@@ -402,6 +476,26 @@ func DefaultConfig() *Config {
 				Channel:   "#kubeguardian",
 				Username:  "KubeGuardian",
 				IconEmoji: ":robot_face:",
+			},
+			Email: EmailConfig{
+				Enabled:       false,
+				Host:          "",
+				Port:          587,
+				Username:      "",
+				Password:      "",
+				From:          "kubeguardian@example.com",
+				To:            "",
+				UseTLS:        false,
+				SkipTLSVerify: false,
+			},
+			Webhook: WebhookConfig{
+				Enabled:      false,
+				URL:          "",
+				Method:       "POST",
+				Headers:      map[string]string{},
+				Timeout:      10 * time.Second,
+				Secret:       "",
+				PayloadType:  "json",
 			},
 		},
 	}

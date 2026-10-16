@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"flag"
 	"net/http"
 	"os"
@@ -26,6 +28,7 @@ var (
 	leaderElection = flag.Bool("leader-elect", false, "Enable leader election for controller manager. "+
 		"Enabling this will ensure there is only one active controller manager.")
 	dryRunMode = flag.Bool("dry-run", false, "Enable dry-run mode to simulate remediation actions without making changes")
+	enableReload = flag.Bool("enable-config-reload", false, "Enable automatic config file reloading on changes")
 	zapOpts    = zap.Options{
 		Development: true,
 	}
@@ -34,6 +37,7 @@ var (
 func init() {
 	flag.StringVar(configFile, "c", "", "Path to configuration file (shorthand)")
 	flag.BoolVar(dryRunMode, "d", false, "Enable dry-run mode (shorthand)")
+	flag.BoolVar(enableReload, "r", false, "Enable config reload (shorthand)")
 	zapOpts.BindFlags(flag.CommandLine)
 }
 
@@ -81,8 +85,27 @@ func main() {
 	// Initialize health checks
 	healthChecker := health.NewHealthCheck(version.Version, ctrl.GetClient())
 
+	// Setup config reloader if enabled
+	var configReloader *config.Reloader
+	if *enableReload && *configFile != "" {
+		configReloader, err = config.NewReloader(*configFile)
+		if err != nil {
+			logger.Error(err, "Failed to create config reloader")
+			os.Exit(1)
+		}
+		configReloader.SetConfig(cfg)
+		configReloader.RegisterCallback(func(newCfg *config.Config) {
+			logger.Info("Configuration reloaded via file watcher")
+		})
+		if err := configReloader.Start(); err != nil {
+			logger.Error(err, "Failed to start config reloader")
+			os.Exit(1)
+		}
+		logger.Info("Config hot-reload enabled", "configFile", *configFile)
+	}
+
 	// Setup HTTP servers for health checks and metrics
-	setupHTTPServers(cfg, healthChecker, metricsCollector)
+	setupHTTPServers(cfg, healthChecker, metricsCollector, ctrl)
 
 	// Log configuration
 	logger.Info("Configuration loaded",
@@ -91,6 +114,10 @@ func main() {
 		"leaderElection", cfg.Controller.LeaderElection,
 		"remediationEnabled", cfg.Remediation.Enabled,
 		"slackEnabled", cfg.Notification.Slack.Enabled,
+		"emailEnabled", cfg.Notification.Email.Enabled,
+		"webhookEnabled", cfg.Notification.Webhook.Enabled,
+		"nodeDetectionEnabled", cfg.Detection.NodeDetection.Enabled,
+		"configReloadEnabled", *enableReload,
 		"dryRun", cfg.Remediation.DryRun,
 	)
 
@@ -118,6 +145,13 @@ func main() {
 	<-sigCh
 	logger.Info("Shutdown signal received, stopping KubeGuardian")
 
+	// Stop config reloader if running
+	if configReloader != nil {
+		if err := configReloader.Stop(); err != nil {
+			logger.Error(err, "Failed to stop config reloader")
+		}
+	}
+
 	// Graceful shutdown with timeout
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
@@ -135,11 +169,11 @@ func main() {
 }
 
 // setupHTTPServers sets up HTTP servers for health checks and metrics
-func setupHTTPServers(cfg *config.Config, healthChecker *health.HealthCheck, metricsCollector *metrics.Metrics) {
+func setupHTTPServers(cfg *config.Config, healthChecker *health.HealthCheck, metricsCollector *metrics.Metrics, ctrl *controller.Controller) {
 	// Create a mux that combines all health and metrics routes
 	mux := http.NewServeMux()
 
-	// Health check endpoint (handles all paths via the health handler)
+	// Health check endpoint
 	mux.HandleFunc("/", healthChecker.HTTPHandler())
 
 	// Readiness probe
@@ -150,6 +184,10 @@ func setupHTTPServers(cfg *config.Config, healthChecker *health.HealthCheck, met
 
 	// Metrics endpoint
 	mux.Handle("/metrics", promhttp.Handler())
+
+	// Remediation history API
+	mux.HandleFunc("/api/v1/remediation/history", makeHistoryHandler(ctrl))
+	mux.HandleFunc("/api/v1/remediation/stats", makeStatsHandler(ctrl))
 
 	// Setup health and metrics server
 	healthServer := &http.Server{
@@ -174,6 +212,52 @@ func setupHTTPServers(cfg *config.Config, healthChecker *health.HealthCheck, met
 			log.Log.Error(err, "Metrics server failed")
 		}
 	}()
+}
+
+// makeHistoryHandler returns an HTTP handler for remediation history
+func makeHistoryHandler(ctrl *controller.Controller) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		namespace := r.URL.Query().Get("namespace")
+		action := r.URL.Query().Get("action")
+
+		limitStr := r.URL.Query().Get("limit")
+		limit := 0
+		if limitStr != "" {
+			if l, err := parseInt(limitStr); err == nil {
+				limit = l
+			}
+		}
+
+		history := ctrl.GetRemediationHistory(namespace, action, limit)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"history": history,
+			"count":   len(history),
+		})
+	}
+}
+
+// makeStatsHandler returns an HTTP handler for remediation stats
+func makeStatsHandler(ctrl *controller.Controller) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		stats := ctrl.GetRemediationStats()
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(stats)
+	}
+}
+
+// parseInt parses a string to int
+func parseInt(s string) (int, error) {
+	var result int
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("invalid integer: %s", s)
+		}
+		result = result*10 + int(c-'0')
+	}
+	return result, nil
 }
 
 // startMetricsUpdater starts a goroutine to update metrics periodically

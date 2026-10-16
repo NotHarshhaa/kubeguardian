@@ -65,6 +65,7 @@ type DetectionConfig struct {
 	MemoryThresholdPercent    float64                    `yaml:"memoryThresholdPercent"`
 	OOMKillThreshold          int                        `yaml:"oomKillThreshold"`
 	Namespaces                map[string]NamespaceConfig `yaml:"namespaces"`
+	NodeDetection             NodeDetectorConfig         `yaml:"-"`
 }
 
 // NamespaceConfig contains namespace-specific detection settings
