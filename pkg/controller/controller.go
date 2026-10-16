@@ -28,10 +28,16 @@ type Controller struct {
 	config         *config.Config
 	detector       *detection.Detector
 	nodeDetector   *detection.NodeDetector
+	eventDetector  *detection.EventDetector
+	securityDetector *detection.SecurityDetector
 	remediator     *remediation.Engine
 	notifier       *notification.Manager
 	metrics        *metrics.Metrics
-	configReloader *config.Reloader
+	silenceManager *detection.SilenceManager
+	maintenanceMgr *remediation.MaintenanceManager
+	pdbChecker     *remediation.PDBChecker
+	recommender    *remediation.ResourceRecommender
+	prometheus     *metrics.PrometheusProvider
 }
 
 // NewController creates a new controller instance
@@ -73,6 +79,13 @@ func NewController(cfg *config.Config, metricsCollector *metrics.Metrics) (*Cont
 	// Create node detector
 	nodeDetector := detection.NewNodeDetector(client)
 
+	// Create event detector
+	eventDetector := detection.NewEventDetector(client)
+	eventDetector.SetDedupWindow(5 * time.Minute)
+
+	// Create security detector
+	securityDetector := detection.NewSecurityDetector(client)
+
 	// Create remediation engine
 	remediationConfig := remediation.RemediationConfig{
 		Enabled:             cfg.Remediation.Enabled,
@@ -86,39 +99,34 @@ func NewController(cfg *config.Config, metricsCollector *metrics.Metrics) (*Cont
 	}
 	remediator := remediation.NewEngine(client, remediationConfig)
 
-	// Create notification manager with all enabled channels
+	// Create notification manager
 	notifier := notification.NewManager()
 
-	// Slack notifier
 	if cfg.Notification.Slack.Enabled {
-		slackConfig := notification.SlackConfig{
+		notifier.Register(notification.NewSlackNotifier(notification.SlackConfig{
 			Token:     cfg.Notification.Slack.Token,
 			Channel:   cfg.Notification.Slack.Channel,
 			Username:  cfg.Notification.Slack.Username,
 			IconEmoji: cfg.Notification.Slack.IconEmoji,
-		}
-		notifier.Register(notification.NewSlackNotifier(slackConfig))
+		}))
 	}
 
-	// Email notifier
 	if cfg.Notification.Email.Enabled {
-		emailConfig := notification.EmailConfig{
-			Enabled:         cfg.Notification.Email.Enabled,
-			Host:            cfg.Notification.Email.Host,
-			Port:            cfg.Notification.Email.Port,
-			Username:        cfg.Notification.Email.Username,
-			Password:        cfg.Notification.Email.Password,
-			From:            cfg.Notification.Email.From,
-			To:              cfg.Notification.Email.To,
-			UseTLS:          cfg.Notification.Email.UseTLS,
-			SkipTLSVerify:   cfg.Notification.Email.SkipTLSVerify,
-		}
-		notifier.Register(notification.NewEmailNotifier(emailConfig))
+		notifier.Register(notification.NewEmailNotifier(notification.EmailConfig{
+			Enabled:        cfg.Notification.Email.Enabled,
+			Host:           cfg.Notification.Email.Host,
+			Port:           cfg.Notification.Email.Port,
+			Username:       cfg.Notification.Email.Username,
+			Password:       cfg.Notification.Email.Password,
+			From:           cfg.Notification.Email.From,
+			To:             cfg.Notification.Email.To,
+			UseTLS:         cfg.Notification.Email.UseTLS,
+			SkipTLSVerify:  cfg.Notification.Email.SkipTLSVerify,
+		}))
 	}
 
-	// Webhook notifier
 	if cfg.Notification.Webhook.Enabled {
-		webhookConfig := notification.WebhookConfig{
+		notifier.Register(notification.NewWebhookNotifier(notification.WebhookConfig{
 			Enabled:     cfg.Notification.Webhook.Enabled,
 			URL:         cfg.Notification.Webhook.URL,
 			Method:      cfg.Notification.Webhook.Method,
@@ -126,18 +134,42 @@ func NewController(cfg *config.Config, metricsCollector *metrics.Metrics) (*Cont
 			Timeout:     cfg.Notification.Webhook.Timeout,
 			Secret:      cfg.Notification.Webhook.Secret,
 			PayloadType: cfg.Notification.Webhook.PayloadType,
-		}
-		notifier.Register(notification.NewWebhookNotifier(webhookConfig))
+		}))
+	}
+
+	// Create silence manager
+	silenceManager := detection.NewSilenceManager()
+
+	// Create maintenance manager
+	maintenanceMgr := remediation.NewMaintenanceManager()
+
+	// Create PDB checker
+	pdbChecker := remediation.NewPDBChecker(client)
+
+	// Create resource recommender
+	recommender := remediation.NewResourceRecommender()
+
+	// Create Prometheus provider if configured
+	var prometheus *metrics.PrometheusProvider
+	if cfg.Detection.Prometheus.Enabled {
+		prometheus = metrics.NewPrometheusProvider(cfg.Detection.Prometheus.URL, 10*time.Second)
 	}
 
 	return &Controller{
-		client:      client,
-		config:      cfg,
-		detector:    detector,
-		nodeDetector: nodeDetector,
-		remediator:  remediator,
-		notifier:    notifier,
-		metrics:     metricsCollector,
+		client:            client,
+		config:            cfg,
+		detector:          detector,
+		nodeDetector:      nodeDetector,
+		eventDetector:     eventDetector,
+		securityDetector:  securityDetector,
+		remediator:        remediator,
+		notifier:          notifier,
+		metrics:           metricsCollector,
+		silenceManager:    silenceManager,
+		maintenanceMgr:    maintenanceMgr,
+		pdbChecker:        pdbChecker,
+		recommender:       recommender,
+		prometheus:        prometheus,
 	}, nil
 }
 
@@ -155,6 +187,15 @@ func (c *Controller) Run(ctx context.Context) error {
 		logger.Error(err, "Failed to send startup notification")
 	}
 
+	// Start event watcher if enabled
+	if c.config.Detection.Events.Enabled {
+		if err := c.eventDetector.StartWatch(ctx); err != nil {
+			logger.Error(err, "Failed to start event watcher")
+		} else {
+			go c.processEvents(ctx)
+		}
+	}
+
 	// Start the main detection loop
 	ticker := time.NewTicker(c.config.Detection.EvaluationInterval)
 	defer ticker.Stop()
@@ -163,6 +204,14 @@ func (c *Controller) Run(ctx context.Context) error {
 	nodeTicker := time.NewTicker(c.config.Detection.NodeDetection.CheckInterval)
 	defer nodeTicker.Stop()
 
+	// Start security scan ticker
+	securityTicker := time.NewTicker(15 * time.Minute)
+	defer securityTicker.Stop()
+
+	// Start Prometheus metrics collection ticker
+	promoTicker := time.NewTicker(1 * time.Minute)
+	defer promoTicker.Stop()
+
 	// Start cooldown cleanup goroutine
 	cleanupTicker := time.NewTicker(10 * time.Minute)
 	defer cleanupTicker.Stop()
@@ -170,6 +219,9 @@ func (c *Controller) Run(ctx context.Context) error {
 	logger.Info("KubeGuardian started",
 		"evaluationInterval", c.config.Detection.EvaluationInterval,
 		"nodeCheckInterval", c.config.Detection.NodeDetection.CheckInterval,
+		"eventsEnabled", c.config.Detection.Events.Enabled,
+		"securityScanEnabled", c.config.Detection.Security.Enabled,
+		"prometheusEnabled", c.config.Detection.Prometheus.Enabled,
 		"enabledChannels", c.notifier.Enabled(),
 	)
 
@@ -177,6 +229,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			logger.Info("KubeGuardian stopping")
+			c.eventDetector.StopWatch()
 			return nil
 		case <-ticker.C:
 			if err := c.runDetectionCycle(ctx); err != nil {
@@ -188,13 +241,70 @@ func (c *Controller) Run(ctx context.Context) error {
 					logger.Error(err, "Node detection cycle failed")
 				}
 			}
+		case <-securityTicker.C:
+			if c.config.Detection.Security.Enabled {
+				if err := c.runSecurityScan(ctx); err != nil {
+					logger.Error(err, "Security scan failed")
+				}
+			}
+		case <-promoTicker.C:
+			if c.prometheus != nil {
+				if err := c.collectPrometheusMetrics(ctx); err != nil {
+					logger.Error(err, "Prometheus metrics collection failed")
+				}
+			}
 		case <-cleanupTicker.C:
 			c.remediator.CleanupCooldowns()
 		}
 	}
 }
 
-// runNodeDetection runs node health detection and notifies on issues
+// processEvents processes events from the event detector channel
+func (c *Controller) processEvents(ctx context.Context) {
+	logger := log.FromContext(ctx)
+
+	for event := range c.eventDetector.EventChannel() {
+		logger.Info("Kubernetes event detected",
+			"reason", event.Reason,
+			"resource", event.InvolvedObjectKind+"/"+event.InvolvedObjectName,
+			"namespace", event.InvolvedObjectNS,
+			"severity", event.Severity,
+		)
+
+		// Check if silenced
+		silenced, reason := c.silenceManager.IsSilenced(
+			"event-"+event.Reason,
+			event.InvolvedObjectNS,
+			event.InvolvedObjectName,
+			event.Severity,
+			event.Labels,
+			time.Now(),
+		)
+		if silenced {
+			logger.Info("Event silenced", "reason", reason)
+			continue
+		}
+
+		// Send notification
+		issue := detection.Issue{
+			RuleName:    "event-" + event.Reason,
+			Description: fmt.Sprintf("Kubernetes event: %s - %s", event.Reason, event.Message),
+			Severity:    event.Severity,
+			Namespace:   event.InvolvedObjectNS,
+			Name:        event.InvolvedObjectName,
+			Kind:        event.InvolvedObjectKind,
+			Actions:     []string{"notify-only"},
+			Labels:      event.Labels,
+			DetectedAt:  event.LastTimestamp,
+		}
+
+		if err := c.notifier.SendIssueNotification(ctx, issue); err != nil {
+			logger.Error(err, "Failed to send event notification")
+		}
+	}
+}
+
+// runNodeDetection runs node health detection
 func (c *Controller) runNodeDetection(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
@@ -212,7 +322,20 @@ func (c *Controller) runNodeDetection(ctx context.Context) error {
 	for _, issue := range issues {
 		logger.Info("Node issue", "node", issue.NodeName, "condition", issue.Condition, "severity", issue.Severity, "message", issue.Message)
 
-		// Send notification for node issue
+		// Check if silenced
+		silenced, reason := c.silenceManager.IsSilenced(
+			"node-"+issue.Condition,
+			"",
+			issue.NodeName,
+			issue.Severity,
+			issue.Labels,
+			time.Now(),
+		)
+		if silenced {
+			logger.Info("Node issue silenced", "node", issue.NodeName, "reason", reason)
+			continue
+		}
+
 		nodeIssue := detection.Issue{
 			RuleName:    "node-" + issue.Condition,
 			Description: fmt.Sprintf("Node %s: %s - %s", issue.NodeName, issue.Condition, issue.Message),
@@ -229,9 +352,117 @@ func (c *Controller) runNodeDetection(ctx context.Context) error {
 			logger.Error(err, "Failed to send node issue notification")
 		}
 
-		// Auto-cordon if enabled
+		// Auto-cordon if enabled and not blocked by maintenance
 		if c.config.Detection.NodeDetection.AutoCordon && issue.Severity == "critical" {
-			c.cordonNode(ctx, issue.NodeName)
+			allowed, blockReason := c.maintenanceMgr.IsRemediationAllowed("", time.Now())
+			if !allowed {
+				logger.Info("Remediation blocked by maintenance window", "reason", blockReason)
+			} else {
+				c.cordonNode(ctx, issue.NodeName)
+			}
+		}
+	}
+
+	return nil
+}
+
+// runSecurityScan runs security policy scanning
+func (c *Controller) runSecurityScan(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+
+	issues, err := c.securityDetector.Detect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to detect security issues: %w", err)
+	}
+
+	if len(issues) == 0 {
+		logger.Info("No security issues detected")
+		return nil
+	}
+
+	logger.Info("Security issues detected", "count", len(issues))
+
+	for _, issue := range issues {
+		logger.Info("Security issue",
+			"resource", issue.ResourceKind+"/"+issue.ResourceName,
+			"namespace", issue.Namespace,
+			"rule", issue.RuleID,
+			"severity", issue.Severity,
+		)
+
+		// Check if silenced
+		silenced, reason := c.silenceManager.IsSilenced(
+			"security-"+issue.RuleID,
+			issue.Namespace,
+			issue.ResourceName,
+			issue.Severity,
+			issue.Labels,
+			time.Now(),
+		)
+		if silenced {
+			logger.Info("Security issue silenced", "resource", issue.ResourceName, "reason", reason)
+			continue
+		}
+
+		// Check maintenance window
+		allowed, blockReason := c.maintenanceMgr.IsRemediationAllowed(issue.Namespace, time.Now())
+		if !allowed {
+			logger.Info("Security remediation blocked by maintenance window", "reason", blockReason)
+			continue
+		}
+
+		securityIssue := detection.Issue{
+			RuleName:    "security-" + issue.RuleID,
+			Description: issue.Description,
+			Severity:    issue.Severity,
+			Namespace:   issue.Namespace,
+			Name:        issue.ResourceName,
+			Kind:        issue.ResourceKind,
+			Actions:     []string{"notify-only"},
+			Labels:      issue.Labels,
+			DetectedAt:  issue.DetectedAt,
+		}
+
+		if err := c.notifier.SendIssueNotification(ctx, securityIssue); err != nil {
+			logger.Error(err, "Failed to send security notification")
+		}
+	}
+
+	return nil
+}
+
+// collectPrometheusMetrics collects real metrics from Prometheus
+func (c *Controller) collectPrometheusMetrics(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+
+	// Check if Prometheus is available
+	if !c.prometheus.IsAvailable(ctx) {
+		logger.Info("Prometheus not available, skipping metrics collection", "verbosity", 1)
+		return nil
+	}
+
+	// List all pods and query their metrics
+	pods, err := c.client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	for _, pod := range pods.Items {
+		for _, container := range pod.Status.ContainerStatuses {
+			cpuUsage, err := c.prometheus.QueryCPUUsage(ctx, pod.Namespace, pod.Name)
+			if err != nil {
+				logger.Info("Failed to query CPU usage", "pod", pod.Name, "container", container.Name, "err", err)
+				continue
+			}
+
+			memUsage, err := c.prometheus.QueryMemoryUsage(ctx, pod.Namespace, pod.Name)
+			if err != nil {
+				logger.Info("Failed to query memory usage", "pod", pod.Name, "container", container.Name, "err", err)
+				continue
+			}
+
+			// Store in recommender for future recommendations
+			c.recommender.AddSample(pod.Namespace, pod.Name, container.Name, cpuUsage, memUsage)
 		}
 	}
 
@@ -240,20 +471,17 @@ func (c *Controller) runNodeDetection(ctx context.Context) error {
 
 // cordonNode cordons a node to prevent new pod scheduling
 func (c *Controller) cordonNode(ctx context.Context, nodeName string) {
-	// Get the current node
 	node, err := c.client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to get node for cordoning", "node", nodeName)
 		return
 	}
 
-	// Check if already unschedulable
 	if node.Spec.Unschedulable {
 		log.FromContext(ctx).Info("Node already cordoned", "node", nodeName)
 		return
 	}
 
-	// Patch the node to mark it unschedulable
 	patch := []byte(`{"spec":{"unschedulable":true}}`)
 	_, err = c.client.CoreV1().Nodes().Patch(ctx, nodeName, types.MergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
@@ -270,13 +498,11 @@ func (c *Controller) runDetectionCycle(ctx context.Context) error {
 	start := time.Now()
 	logger.Info("Starting detection cycle")
 
-	// Detect issues
 	issues, err := c.detector.DetectIssues(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to detect issues: %w", err)
 	}
 
-	// Record detection metrics
 	c.metrics.UpdateLastDetectionTime()
 	c.metrics.RecordDetectionDuration("detection_cycle", time.Since(start))
 
@@ -287,13 +513,23 @@ func (c *Controller) runDetectionCycle(ctx context.Context) error {
 
 	logger.Info("Issues detected", "count", len(issues))
 
-	// Record metrics for each detected issue
 	for _, issue := range issues {
 		c.metrics.RecordIssueDetected(issue.RuleName, issue.Severity, issue.Namespace)
-	}
 
-	// Process each issue
-	for _, issue := range issues {
+		// Check if silenced
+		silenced, reason := c.silenceManager.IsSilenced(
+			issue.RuleName,
+			issue.Namespace,
+			issue.Name,
+			issue.Severity,
+			issue.Labels,
+			time.Now(),
+		)
+		if silenced {
+			logger.Info("Issue silenced", "rule", issue.RuleName, "resource", issue.Name, "reason", reason)
+			continue
+		}
+
 		if err := c.processIssue(ctx, issue); err != nil {
 			logger.Error(err, "Failed to process issue", "rule", issue.RuleName, "resource", issue.Name)
 		}
@@ -307,7 +543,6 @@ func (c *Controller) processIssue(ctx context.Context, issue detection.Issue) er
 	logger := log.FromContext(ctx)
 	logger.Info("Processing issue", "rule", issue.RuleName, "resource", issue.Name, "severity", issue.Severity)
 
-	// Send issue notification via all enabled channels
 	if err := c.notifier.SendIssueNotification(ctx, issue); err != nil {
 		logger.Error(err, "Failed to send issue notification")
 		c.metrics.RecordNotification("issue", "failed")
@@ -315,7 +550,13 @@ func (c *Controller) processIssue(ctx context.Context, issue detection.Issue) er
 		c.metrics.RecordNotification("issue", "success")
 	}
 
-	// Execute remediation actions
+	// Check maintenance window before remediation
+	allowed, blockReason := c.maintenanceMgr.IsRemediationAllowed(issue.Namespace, time.Now())
+	if !allowed {
+		logger.Info("Remediation blocked by maintenance window", "resource", issue.Name, "reason", blockReason)
+		return nil
+	}
+
 	for _, action := range issue.Actions {
 		if action == "notify-only" {
 			logger.Info("Skipping remediation for notify-only action", "resource", issue.Name)
@@ -325,23 +566,32 @@ func (c *Controller) processIssue(ctx context.Context, issue detection.Issue) er
 		logger.Info("Executing remediation action", "action", action, "resource", issue.Name)
 		start := time.Now()
 
+		// PDB check for disruptive actions
+		if action == "restart-pod" {
+			canDisrupt, reason, err := c.pdbChecker.CanDisrupt(ctx, issue.Namespace, issue.Name)
+			if err != nil {
+				logger.Error(err, "PDB check failed", "resource", issue.Name)
+			} else if !canDisrupt {
+				logger.Info("Remediation blocked by PDB", "resource", issue.Name, "reason", reason)
+				c.metrics.RecordRemediation(action, "blocked", issue.Namespace, time.Since(start))
+				continue
+			}
+		}
+
 		result, err := c.remediator.ExecuteAction(ctx, action, issue.Resource, issue.Namespace)
 		if err != nil {
 			logger.Error(err, "Failed to execute remediation action", "action", action)
 			c.metrics.RecordRemediation(action, "error", issue.Namespace, time.Since(start))
-			// Continue with other actions even if one fails
 			continue
 		}
 
 		if result != nil {
-			// Record remediation metrics
 			status := "success"
 			if !result.Success {
 				status = "failed"
 			}
 			c.metrics.RecordRemediation(action, status, issue.Namespace, time.Since(start))
 
-			// Send remediation notification via all enabled channels
 			if err := c.notifier.SendRemediationNotification(ctx, issue, *result); err != nil {
 				logger.Error(err, "Failed to send remediation notification")
 				c.metrics.RecordNotification("remediation", "failed")
@@ -349,11 +599,7 @@ func (c *Controller) processIssue(ctx context.Context, issue detection.Issue) er
 				c.metrics.RecordNotification("remediation", "success")
 			}
 
-			logger.Info("Remediation action completed",
-				"action", action,
-				"success", result.Success,
-				"message", result.Message,
-			)
+			logger.Info("Remediation action completed", "action", action, "success", result.Success, "message", result.Message)
 		}
 	}
 
@@ -368,6 +614,41 @@ func (c *Controller) GetRemediationHistory(namespace, action string, limit int) 
 // GetRemediationStats returns remediation statistics
 func (c *Controller) GetRemediationStats() remediation.HistoryStats {
 	return c.remediator.HistoryStats()
+}
+
+// GetSilenceRules returns all silence rules
+func (c *Controller) GetSilenceRules() []detection.SilenceRule {
+	return c.silenceManager.GetRules()
+}
+
+// AddSilenceRule adds a silence rule
+func (c *Controller) AddSilenceRule(rule detection.SilenceRule) {
+	c.silenceManager.AddRule(rule)
+}
+
+// RemoveSilenceRule removes a silence rule by ID
+func (c *Controller) RemoveSilenceRule(id string) {
+	c.silenceManager.RemoveRule(id)
+}
+
+// GetMaintenanceWindows returns all maintenance windows
+func (c *Controller) GetMaintenanceWindows() []remediation.MaintenanceWindow {
+	return c.maintenanceMgr.GetWindows()
+}
+
+// AddMaintenanceWindow adds a maintenance window
+func (c *Controller) AddMaintenanceWindow(window remediation.MaintenanceWindow) {
+	c.maintenanceMgr.AddWindow(window)
+}
+
+// RemoveMaintenanceWindow removes a maintenance window by ID
+func (c *Controller) RemoveMaintenanceWindow(id string) {
+	c.maintenanceMgr.RemoveWindow(id)
+}
+
+// GetResourceRecommendations returns all resource recommendations
+func (c *Controller) GetResourceRecommendations() []*remediation.ResourceRecommendation {
+	return c.recommender.GetAllRecommendations()
 }
 
 // convertConfigNamespaces converts config namespace configs to detection namespace configs
@@ -447,15 +728,10 @@ func SetupManager(cfg *config.Config) (manager.Manager, error) {
 // StartManager starts the controller-runtime manager
 func StartManager(ctx context.Context, mgr manager.Manager) error {
 	logger := log.FromContext(ctx)
-
-	// Setup signals
 	ctx = signals.SetupSignalHandler()
-
-	// Start the manager
 	logger.Info("Starting manager")
 	if err := mgr.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start manager: %w", err)
 	}
-
 	return nil
 }

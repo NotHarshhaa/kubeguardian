@@ -290,6 +290,9 @@ type DetectionConfig struct {
 	OOMKillThreshold          int                        `yaml:"oomKillThreshold"`
 	Namespaces                map[string]NamespaceConfig `yaml:"namespaces"`
 	NodeDetection             NodeDetectionConfig        `yaml:"nodeDetection"`
+	Events                    EventsDetectionConfig      `yaml:"events"`
+	Security                  SecurityDetectionConfig    `yaml:"security"`
+	Prometheus                PrometheusConfig           `yaml:"prometheus"`
 }
 
 // NodeDetectionConfig contains node health detection settings
@@ -299,6 +302,27 @@ type NodeDetectionConfig struct {
 	AutoCordon     bool          `yaml:"autoCordon"`
 	AutoUncord     bool          `yaml:"autoUncord"`
 	CordonDuration time.Duration `yaml:"cordonDuration"`
+}
+
+// EventsDetectionConfig contains Kubernetes events detection settings
+type EventsDetectionConfig struct {
+	Enabled      bool          `yaml:"enabled"`
+	Namespaces   []string      `yaml:"namespaces"`
+	Since        time.Duration `yaml:"since"`
+	DedupWindow  time.Duration `yaml:"dedupWindow"`
+}
+
+// SecurityDetectionConfig contains security policy detection settings
+type SecurityDetectionConfig struct {
+	Enabled     bool          `yaml:"enabled"`
+	ScanInterval time.Duration `yaml:"scanInterval"`
+}
+
+// PrometheusConfig contains Prometheus metrics provider settings
+type PrometheusConfig struct {
+	Enabled bool          `yaml:"enabled"`
+	URL     string        `yaml:"url"`
+	Timeout time.Duration `yaml:"timeout"`
 }
 
 // NamespaceConfig contains namespace-specific detection and remediation settings
@@ -458,6 +482,21 @@ func DefaultConfig() *Config {
 				AutoCordon:     false,
 				AutoUncord:     false,
 				CordonDuration: 15 * time.Minute,
+			},
+			Events: EventsDetectionConfig{
+				Enabled:     true,
+				Namespaces:  nil,
+				Since:       1 * time.Hour,
+				DedupWindow: 5 * time.Minute,
+			},
+			Security: SecurityDetectionConfig{
+				Enabled:       true,
+				ScanInterval:  15 * time.Minute,
+			},
+			Prometheus: PrometheusConfig{
+				Enabled:  false,
+				URL:      "http://prometheus:9090",
+				Timeout:  10 * time.Second,
 			},
 		},
 		Remediation: RemediationConfig{

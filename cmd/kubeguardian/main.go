@@ -13,6 +13,7 @@ import (
 
 	"github.com/NotHarshhaa/kubeguardian/pkg/config"
 	"github.com/NotHarshhaa/kubeguardian/pkg/controller"
+	"github.com/NotHarshhaa/kubeguardian/pkg/dashboard"
 	"github.com/NotHarshhaa/kubeguardian/pkg/health"
 	"github.com/NotHarshhaa/kubeguardian/pkg/metrics"
 	"github.com/NotHarshhaa/kubeguardian/pkg/version"
@@ -188,6 +189,10 @@ func setupHTTPServers(cfg *config.Config, healthChecker *health.HealthCheck, met
 	// Remediation history API
 	mux.HandleFunc("/api/v1/remediation/history", makeHistoryHandler(ctrl))
 	mux.HandleFunc("/api/v1/remediation/stats", makeStatsHandler(ctrl))
+
+	// Dashboard API
+	dash := dashboard.NewDashboard(ctrl)
+	dash.RegisterRoutes(mux)
 
 	// Setup health and metrics server
 	healthServer := &http.Server{

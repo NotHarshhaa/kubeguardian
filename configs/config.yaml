@@ -40,6 +40,30 @@ detection:
     autoUncord: false
     # How long to keep a node cordoned
     cordonDuration: 15m
+  # Kubernetes events detection settings
+  events:
+    # Enable event monitoring
+    enabled: true
+    # Namespaces to monitor (empty = all)
+    namespaces: []
+    # How far back to look for events
+    since: 1h
+    # Deduplication window for repeated events
+    dedupWindow: 5m
+  # Security policy detection settings
+  security:
+    # Enable security scanning
+    enabled: true
+    # How often to scan for security violations
+    scanInterval: 15m
+  # Prometheus metrics provider settings
+  prometheus:
+    # Enable querying Prometheus for real metrics
+    enabled: false
+    # Prometheus server URL
+    url: "http://prometheus:9090"
+    # Request timeout
+    timeout: 10s
 
 remediation:
   # Enable remediation actions
