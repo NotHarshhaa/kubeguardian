@@ -2,7 +2,7 @@
 # Build time optimization: ~2-3 minutes instead of 15 minutes
 
 # Use multi-platform builder image
-FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
