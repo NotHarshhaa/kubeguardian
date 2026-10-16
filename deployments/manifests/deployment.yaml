@@ -7,7 +7,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kubeguardian
     app.kubernetes.io/component: controller
-    app.kubernetes.io/version: v1.0.0
+    app.kubernetes.io/version: v2.0.0
 spec:
   replicas: 1
   selector:
@@ -19,7 +19,7 @@ spec:
       labels:
         app.kubernetes.io/name: kubeguardian
         app.kubernetes.io/component: controller
-        app.kubernetes.io/version: v1.0.0
+        app.kubernetes.io/version: v2.0.0
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
@@ -32,7 +32,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: kubeguardian
-        image: kubeguardian/kubeguardian:v1.0.0
+        image: kubeguardian/kubeguardian:v2.0.0
         imagePullPolicy: IfNotPresent
         args:
         - --leader-elect

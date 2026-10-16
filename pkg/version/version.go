@@ -3,7 +3,7 @@ package version
 // Version information
 var (
 	// Version is the current version of KubeGuardian
-	Version = "v1.6.0"
+	Version = "v2.0.0"
 
 	// GitCommit is the git commit hash
 	GitCommit = "unknown"
